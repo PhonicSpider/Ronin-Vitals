@@ -28,6 +28,10 @@ coverage*.xml
 .env.*
 appsettings.*.local.json
 
+# Private working notes, kept locally but not published
+CHECKLIST.md
+Ronin_Vitals_Project_Brief.md
+
 # OS junk
 Thumbs.db
 .DS_Store

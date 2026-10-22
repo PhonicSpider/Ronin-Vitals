@@ -101,8 +101,6 @@ WPF on .NET 8, using MVVM with [CommunityToolkit.Mvvm](https://github.com/Commun
 - `PowerShellConsoleService` hosts the Tech Mode shell.
 - `RoninVitals.Tests` holds the unit tests (xUnit). They cover the catalog, view models and converters. Checks that read the real machine are tested by running them, not mocked.
 
-`CHECKLIST.md` is the detailed build log: what is done, what is deliberately not done and why, and the bugs found along the way.
-
 ## Credits
 
 Interface fonts are bundled under the SIL Open Font License: Space Grotesk, Inter and IBM Plex Mono. The license texts are in `RoninVitals/Assets/Fonts`.
