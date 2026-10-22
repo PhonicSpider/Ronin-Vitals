@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ronin Vitals — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0d12;
+    --surface:#141821;
+    --surface2:#1b212d;
+    --surface3:#212838;
+    --border:#262c3a;
+    --teal:#35d0ba;
+    --teal-dim:rgba(53,208,186,0.14);
+    --blue:#5ec8f0;
+    --yellow:#e8b84b;
+    --red:#e6605f;
+    --text:#e7eaf2;
+    --muted:#7c8399;
+    --muted-dim:#565c6e;
+    --display:'Space Grotesk',sans-serif;
+    --body:'Inter',sans-serif;
+    --mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:radial-gradient(circle at 50% -10%, #141a26 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:var(--body);
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+
+  /* ── Top bar / vitals strip ── */
+  .topbar{
+    padding:18px 20px 14px;
+    border-bottom:1px solid var(--border);
+    background:rgba(20,24,33,0.6);
+    backdrop-filter:blur(8px);
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin-bottom:14px;
+  }
+  .brand-mark{
+    width:26px;height:26px;
+    border-radius:7px;
+    background:linear-gradient(135deg, var(--teal), #1f9d8c);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    box-shadow:0 0 14px rgba(53,208,186,0.35);
+  }
+  .brand-mark svg{width:15px;height:15px;}
+  .brand-name{
+    font-family:var(--display);
+    font-weight:600;
+    font-size:15px;
+    letter-spacing:0.01em;
+  }
+  .brand-name span{color:var(--teal);}
+
+  .vitals-row{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+  }
+  .vital{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:8px 9px 7px;
+    position:relative;
+    overflow:hidden;
+  }
+  .vital-label{
+    font-size:9.5px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+    font-weight:600;
+    margin-bottom:2px;
+  }
+  .vital-value{
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text);
+    font-weight:500;
+  }
+  .vital canvas{
+    display:block;
+    width:100%;
+    height:20px;
+    margin-top:4px;
+  }
+
+  /* ── Screens ── */
+  .screens{
+    flex:1;
+    position:relative;
+    padding:22px 20px 40px;
+  }
+  .screen{
+    position:absolute;
+    inset:0;
+    padding:22px 20px 40px;
+    opacity:0;
+    transform:translateY(14px) scale(0.985);
+    pointer-events:none;
+    transition:opacity 0.65s cubic-bezier(.22,.61,.36,1), transform 0.7s cubic-bezier(.22,.61,.36,1);
+  }
+  .screen.leaving{
+    opacity:0;
+    transform:translateY(-10px) scale(1.01);
+    transition:opacity 0.5s cubic-bezier(.4,0,.6,1), transform 0.55s cubic-bezier(.4,0,.6,1);
+  }
+  .screen.active{
+    opacity:1;
+    transform:translateY(0) scale(1);
+    pointer-events:auto;
+  }
+
+  .eyebrow{
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  .headline{
+    font-family:var(--display);
+    font-size:22px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    margin-bottom:22px;
+    line-height:1.25;
+    transition:opacity 0.35s ease;
+  }
+
+  .back-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-family:var(--body);
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    margin-bottom:16px;
+    padding:6px 2px;
+    transition:color 0.15s;
+  }
+  .back-btn:hover{color:var(--text);}
+  .back-btn svg{width:14px;height:14px;flex-shrink:0;}
+
+  /* ── Section tiles (Home) ── */
+  .section-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .section-tile{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:20px 16px 18px;
+    cursor:pointer;
+    transition:transform 0.2s, border-color 0.2s, background 0.2s;
+    text-align:left;
+  }
+  .section-tile:hover{
+    transform:translateY(-2px);
+    border-color:#333c4f;
+    background:var(--surface2);
+  }
+  .section-tile .icon-wrap{
+    width:38px;height:38px;
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:14px;
+  }
+  .section-tile .icon-wrap svg{width:19px;height:19px;}
+  .section-tile h3{
+    font-family:var(--display);
+    font-size:15px;
+    font-weight:600;
+    margin-bottom:4px;
+  }
+  .section-tile p{
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.4;
+  }
+  .tile-network .icon-wrap{background:rgba(94,200,240,0.14);color:var(--blue);}
+  .tile-hardware .icon-wrap{background:rgba(53,208,186,0.14);color:var(--teal);}
+  .tile-software .icon-wrap{background:rgba(232,184,75,0.14);color:var(--yellow);}
+  .tile-os .icon-wrap{background:rgba(180,150,240,0.14);color:#b496f0;}
+
+  /* ── Symptom cards ── */
+  .symptom-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .symptom-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    cursor:pointer;
+    max-height:300px;
+    overflow:hidden;
+    transition:
+      max-height 0.55s cubic-bezier(.4,0,.2,1),
+      opacity 0.45s ease,
+      margin 0.5s ease,
+      padding 0.5s ease,
+      border-color 0.3s ease,
+      background 0.3s ease,
+      transform 0.35s ease;
+  }
+  .symptom-card .card-head{
+    padding:16px 16px;
+  }
+  .symptom-card:not(.expanded):hover{
+    border-color:var(--teal);
+    background:var(--surface2);
+    transform:translateX(2px);
+  }
+  .symptom-card h4{
+    font-family:var(--display);
+    font-size:14.5px;
+    font-weight:600;
+    margin-bottom:4px;
+  }
+  .symptom-card p{
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.45;
+  }
+  .symptom-card.catchall{
+    border-style:dashed;
+  }
+
+  /* siblings fading/collapsing away when one card expands */
+  .symptom-card.sibling-collapsed{
+    max-height:0;
+    opacity:0;
+    margin-top:0;
+    margin-bottom:0;
+    padding-top:0;
+    padding-bottom:0;
+    border-width:0;
+    pointer-events:none;
+    transform:translateY(-6px);
+  }
+
+  /* expanded card */
+  .symptom-card.expanded{
+    max-height:900px;
+    cursor:default;
+    border-color:var(--teal);
+    background:var(--surface2);
+  }
+  .symptom-card.expanded .card-head{
+    cursor:pointer;
+  }
+  .symptom-card.expanded .card-head:hover{opacity:0.85;}
+
+  .expand-content{
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    padding:0 16px;
+    transition:max-height 0.55s cubic-bezier(.4,0,.2,1) 0.08s, opacity 0.45s ease 0.12s;
+  }
+  .expand-content.open{
+    max-height:820px;
+    opacity:1;
+    padding:0 16px 18px;
+  }
+
+  .inline-back{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-size:11.5px;
+    font-weight:600;
+    cursor:pointer;
+    margin-bottom:12px;
+    padding:2px;
+  }
+  .inline-back:hover{color:var(--teal);}
+  .inline-back svg{width:12px;height:12px;}
+
+  .detail-sub{
+    font-size:12.5px;
+    color:var(--muted);
+    margin-bottom:14px;
+    line-height:1.45;
+  }
+  .run-btn{
+    width:100%;
+    padding:12px;
+    border-radius:10px;
+    border:none;
+    background:linear-gradient(135deg, var(--teal), #24a894);
+    color:#062621;
+    font-family:var(--body);
+    font-weight:600;
+    font-size:14px;
+    cursor:pointer;
+    transition:filter 0.15s, transform 0.15s;
+    margin-bottom:4px;
+  }
+  .run-btn:hover{filter:brightness(1.08);}
+  .run-btn:active{transform:scale(0.98);}
+  .run-btn:disabled{opacity:0.5;cursor:default;}
+
+  .check-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    margin-top:16px;
+  }
+  .check-item{
+    display:flex;
+    gap:11px;
+    align-items:flex-start;
+    background:var(--surface3);
+    border:1px solid var(--border);
+    border-radius:11px;
+    padding:11px 12px;
+    transition:opacity 0.3s, background 0.3s;
+  }
+  .check-item.pending{opacity:0.55;}
+  .check-item.pass{opacity:0.7;}
+  .check-icon{
+    width:20px;height:20px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    margin-top:1px;
+    font-size:11px;
+  }
+  .check-icon.pending{background:#242b3c;}
+  .check-icon.spin{
+    border:2px solid #242b3c;
+    border-top-color:var(--blue);
+    animation:spin 0.7s linear infinite;
+  }
+  .check-icon.pass{background:rgba(53,208,186,0.18);color:var(--teal);}
+  .check-icon.warn{background:rgba(232,184,75,0.18);color:var(--yellow);}
+  .check-icon.bad{background:rgba(230,96,95,0.18);color:var(--red);}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .check-body{flex:1;min-width:0;}
+  .check-title{font-size:13px;font-weight:500;color:var(--text);}
+  .check-result{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4;}
+  .check-item.warn .check-result{color:#d9b062;}
+  .check-item.bad .check-result{color:#e08281;}
+
+  .fix-btn{
+    margin-top:8px;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    background:#242b3c;
+    border:1px solid #33405a;
+    color:var(--teal);
+    font-size:11.5px;
+    font-weight:600;
+    padding:6px 10px;
+    border-radius:7px;
+    cursor:pointer;
+    transition:background 0.15s;
+  }
+  .fix-btn:hover{background:#28324a;}
+  .fix-btn.applied{
+    color:var(--muted);
+    border-color:var(--border);
+    cursor:default;
+  }
+
+  .summary-bar{
+    margin-top:18px;
+    padding:12px 14px;
+    border-radius:11px;
+    background:var(--teal-dim);
+    border:1px solid rgba(53,208,186,0.3);
+    font-size:12.5px;
+    color:#a9ecdf;
+    display:none;
+  }
+  .summary-bar.show{display:block;}
+  .summary-bar.has-issues{
+    background:rgba(232,184,75,0.1);
+    border-color:rgba(232,184,75,0.3);
+    color:#f0d495;
+  }
+
+  /* ── Driver entry link on home ── */
+  .driver-entry{
+    width:100%;
+    margin-top:12px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:15px 16px;
+    cursor:pointer;
+    text-align:left;
+    transition:border-color 0.2s, background 0.2s, transform 0.2s;
+  }
+  .driver-entry:hover{border-color:var(--teal);background:var(--surface2);transform:translateY(-1px);}
+  .driver-entry-icon{
+    width:34px;height:34px;
+    border-radius:9px;
+    background:rgba(53,208,186,0.14);
+    color:var(--teal);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .driver-entry-icon svg{width:17px;height:17px;}
+  .driver-entry-text{flex:1;min-width:0;}
+  .driver-entry-text h4{font-family:var(--display);font-size:13.5px;font-weight:600;margin-bottom:2px;}
+  .driver-entry-text p{font-size:11.5px;color:var(--muted);line-height:1.4;}
+  .driver-entry-arrow{width:16px;height:16px;color:var(--muted-dim);flex-shrink:0;}
+
+  /* ── Drivers loading state ── */
+  .drivers-loading{padding:30px 4px;}
+  .loading-bar{
+    width:100%;height:6px;
+    background:var(--surface2);
+    border-radius:99px;
+    overflow:hidden;
+    margin-bottom:12px;
+  }
+  .loading-fill{
+    height:100%;width:0%;
+    background:linear-gradient(90deg, var(--teal), var(--blue));
+    border-radius:99px;
+    transition:width 0.4s ease;
+  }
+  .loading-label{font-size:12.5px;color:var(--muted);font-family:var(--mono);}
+
+  /* ── Drivers panel ── */
+  .drivers-panel{padding-bottom:70px;}
+  .drivers-summary{
+    font-size:12.5px;
+    color:var(--muted);
+    margin-bottom:16px;
+  }
+  .drivers-summary span{color:var(--teal);font-weight:600;}
+
+  .vendor-group{margin-bottom:18px;}
+  .vendor-header{
+    font-family:var(--display);
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:8px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .vendor-header::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--border);
+  }
+
+  .driver-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px 13px;
+    margin-bottom:7px;
+    transition:border-color 0.2s, background 0.2s;
+  }
+  .driver-row.selectable:hover{border-color:#333c4f;}
+  .driver-row.checked{border-color:var(--teal);background:var(--surface2);}
+
+  .driver-check{
+    width:19px;height:19px;
+    border-radius:6px;
+    border:1.5px solid #3a4258;
+    background:var(--surface3);
+    flex-shrink:0;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background 0.15s, border-color 0.15s;
+  }
+  .driver-check.checked{
+    background:var(--teal);
+    border-color:var(--teal);
+  }
+  .driver-check.checked::after{
+    content:"✓";
+    color:#062621;
+    font-size:12px;
+    font-weight:700;
+  }
+  .driver-check.disabled{
+    opacity:0.3;
+    cursor:default;
+  }
+
+  .driver-info{flex:1;min-width:0;}
+  .driver-name{font-size:13px;font-weight:500;color:var(--text);}
+  .driver-versions{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+    margin-top:3px;
+  }
+  .driver-versions .arrow{color:var(--muted-dim);margin:0 4px;}
+  .driver-versions .new{color:var(--teal);}
+
+  .driver-badge{
+    font-size:9.5px;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    padding:4px 8px;
+    border-radius:6px;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .driver-badge.wu{background:rgba(94,200,240,0.14);color:var(--blue);}
+  .driver-badge.direct{background:rgba(53,208,186,0.14);color:var(--teal);}
+  .driver-badge.linkout{background:rgba(232,184,75,0.14);color:var(--yellow);}
+
+  .driver-link-btn{
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--yellow);
+    background:none;
+    border:1px solid rgba(232,184,75,0.3);
+    padding:6px 10px;
+    border-radius:7px;
+    cursor:pointer;
+    flex-shrink:0;
+    white-space:nowrap;
+    transition:background 0.15s;
+  }
+  .driver-link-btn:hover{background:rgba(232,184,75,0.1);}
+
+  /* ── Sticky update bar ── */
+  .update-bar{
+    position:fixed;
+    left:0;right:0;bottom:0;
+    display:flex;justify-content:center;
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, var(--bg) 60%, transparent);
+    pointer-events:none;
+    transform:translateY(100%);
+    opacity:0;
+    transition:transform 0.4s cubic-bezier(.4,0,.2,1), opacity 0.4s ease;
+    z-index:30;
+  }
+  .update-bar.show{transform:translateY(0);opacity:1;}
+  .update-bar-inner{
+    width:100%;
+    max-width:440px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:12px 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    pointer-events:auto;
+    box-shadow:0 8px 30px rgba(0,0,0,0.4);
+  }
+  #selected-count{font-size:12.5px;color:var(--muted);font-weight:500;}
+  .update-btn{
+    padding:10px 18px;
+    border-radius:9px;
+    border:none;
+    background:linear-gradient(135deg, var(--teal), #24a894);
+    color:#062621;
+    font-family:var(--body);
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    transition:filter 0.15s, opacity 0.15s;
+  }
+  .update-btn:disabled{opacity:0.35;cursor:default;}
+  .update-btn:not(:disabled):hover{filter:brightness(1.08);}
+
+  ::selection{background:rgba(53,208,186,0.3);}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4z" stroke="#04231d" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 12.5l2 2 5-5" stroke="#04231d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-name">Ronin <span>Vitals</span></div>
+    </div>
+    <div class="vitals-row">
+      <div class="vital"><div class="vital-label">Network</div><div class="vital-value" id="vv-net">4.2 Mb/s</div><canvas id="vc-net"></canvas></div>
+      <div class="vital"><div class="vital-label">CPU</div><div class="vital-value" id="vv-cpu">18%</div><canvas id="vc-cpu"></canvas></div>
+      <div class="vital"><div class="vital-label">RAM</div><div class="vital-value" id="vv-ram">61%</div><canvas id="vc-ram"></canvas></div>
+      <div class="vital"><div class="vital-label">Disk</div><div class="vital-value" id="vv-disk">Healthy</div><canvas id="vc-disk"></canvas></div>
+    </div>
+  </div>
+
+  <div class="screens">
+
+    <!-- SCREEN: HOME -->
+    <div class="screen active" data-screen="home">
+      <div class="eyebrow">Ronin Vitals</div>
+      <div class="headline">What area would you<br/>like to check?</div>
+      <div class="section-grid" id="section-grid"></div>
+      <button class="driver-entry" id="driver-entry">
+        <div class="driver-entry-icon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 1116 0 8 8 0 01-16 0z" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="driver-entry-text">
+          <h4>Check for driver updates</h4>
+          <p>Scan every driver on your system and update what's safe to update</p>
+        </div>
+        <svg class="driver-entry-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    <!-- SCREEN: SYMPTOMS -->
+    <div class="screen" data-screen="symptoms">
+      <button class="back-btn" id="top-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        <span id="top-back-label">All areas</span>
+      </button>
+      <div class="eyebrow" id="symptoms-eyebrow">Network</div>
+      <div class="headline" id="symptoms-headline">What seems to be<br/>the problem?</div>
+      <div class="symptom-list" id="symptom-list"></div>
+    </div>
+
+    <!-- SCREEN: DRIVERS -->
+    <div class="screen" data-screen="drivers">
+      <button class="back-btn" id="drivers-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        All areas
+      </button>
+      <div class="eyebrow">Driver Updates</div>
+      <div class="headline" id="drivers-headline">Scanning your system…</div>
+
+      <div id="drivers-loading" class="drivers-loading">
+        <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+        <div class="loading-label" id="loading-label">Reading installed devices…</div>
+      </div>
+
+      <div id="drivers-panel" class="drivers-panel" style="display:none;">
+        <div class="drivers-summary">
+          <span id="drivers-count">0</span> updates found across <span id="vendor-count">0</span> manufacturers
+        </div>
+        <div id="drivers-groups"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="update-bar" id="update-bar">
+  <div class="update-bar-inner">
+    <span id="selected-count">0 selected</span>
+    <button class="update-btn" id="update-btn" disabled>Update Selected</button>
+  </div>
+</div>
+
+<script>
+/* ---------- Data ---------- */
+const ICONS = {
+  network: '<path d="M5 12.5a11 11 0 0114 0M8 16a6.5 6.5 0 018 0M11.5 19.5h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  hardware: '<rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M9 20h6M12 16v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  software: '<rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M9 9l-2 3 2 3M15 9l2 3-2 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  os: '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+};
+
+const DATA = {
+  network: {
+    label: "Network", tileClass:"tile-network", icon:ICONS.network,
+    desc:"Connection, speed, and Wi-Fi",
+    symptoms: [
+      { id:"slow", title:"My internet feels slow", sub:"Check common causes of sluggish browsing or streaming.",
+        checks:[
+          {label:"Running a speed test", pass:"Getting 84 Mb/s down — close to what your plan should give you.", status:"pass"},
+          {label:"Checking for packet loss", pass:"No packet loss detected on your connection.", status:"pass"},
+          {label:"Checking Wi-Fi channel congestion", warn:"Your Wi-Fi is sharing a crowded channel with nearby networks.", status:"warn", fix:"Switch to a less crowded channel"},
+          {label:"Checking DNS response time", pass:"Your DNS is responding quickly.", status:"pass"}
+        ]},
+      { id:"nointernet", title:"I can't get online at all", sub:"Check the basics that stop a connection from working.",
+        checks:[
+          {label:"Checking network adapter status", pass:"Your adapter is enabled and connected.", status:"pass"},
+          {label:"Checking IP address assignment", bad:"Your computer doesn't have a valid IP address.", status:"bad", fix:"Renew IP address"},
+          {label:"Checking router connection", pass:"Your router is reachable.", status:"pass"},
+          {label:"Testing DNS resolution", warn:"Websites are taking unusually long to resolve.", status:"warn", fix:"Flush DNS cache"}
+        ]},
+      { id:"wifidrop", title:"Wi-Fi keeps dropping", sub:"Check signal strength, interference, and driver health.",
+        checks:[
+          {label:"Measuring signal strength", warn:"Signal is weaker than expected for this room.", status:"warn", fix:"Show placement tips"},
+          {label:"Scanning for interference", pass:"No major interference detected nearby.", status:"pass"},
+          {label:"Checking Wi-Fi driver status", pass:"Driver is up to date.", status:"pass"},
+          {label:"Checking power-saving settings", bad:"Windows is powering down your Wi-Fi adapter to save battery.", status:"bad", fix:"Disable power saving for Wi-Fi"}
+        ]},
+      { id:"cantreach", title:"A website or game won't load", sub:"Check whether it's your connection or the destination.",
+        checks:[
+          {label:"Testing DNS resolution", pass:"The address resolves correctly.", status:"pass"},
+          {label:"Checking firewall rules", bad:"Your firewall is blocking the connection.", status:"bad", fix:"Allow this app through firewall"},
+          {label:"Testing server reachability", pass:"The remote server is responding.", status:"pass"},
+          {label:"Clearing stale browser cache", pass:"Cache looks fine, no action needed.", status:"pass"}
+        ]}
+    ]
+  },
+  hardware: {
+    label:"Hardware", tileClass:"tile-hardware", icon:ICONS.hardware,
+    desc:"Performance, heat, and drives",
+    symptoms:[
+      { id:"slowpc", title:"My computer feels slow", sub:"Check what might be holding your system back.",
+        checks:[
+          {label:"Checking CPU load", pass:"CPU usage is normal.", status:"pass"},
+          {label:"Checking memory usage", warn:"RAM usage is high — several programs are competing for memory.", status:"warn", fix:"Show what's using RAM"},
+          {label:"Checking disk activity", pass:"Disk activity is normal.", status:"pass"},
+          {label:"Checking startup programs", bad:"12 programs are launching automatically at startup.", status:"bad", fix:"Manage startup programs"}
+        ]},
+      { id:"hot", title:"Fans are loud or it's overheating", sub:"Check temperatures and airflow-related issues.",
+        checks:[
+          {label:"Reading CPU temperature", warn:"CPU is running warmer than ideal under load.", status:"warn", fix:"Show cooling tips"},
+          {label:"Checking for thermal throttling", pass:"No throttling detected right now.", status:"pass"},
+          {label:"Checking fan activity", pass:"Fans are responding normally.", status:"pass"}
+        ]},
+      { id:"drivefail", title:"A drive might be failing", sub:"Check drive health before you lose anything.",
+        checks:[
+          {label:"Reading drive health status", bad:"Your drive is reporting early signs of wear.", status:"bad", fix:"Back up this drive now"},
+          {label:"Checking free space", pass:"Plenty of free space available.", status:"pass"},
+          {label:"Checking for read/write errors", warn:"A few recoverable errors were found.", status:"warn", fix:"Show error details"}
+        ]},
+      { id:"hwall", title:"Not sure — check everything", sub:"A general hardware health check, top to bottom.",
+        checks:[
+          {label:"Checking CPU health", pass:"Looks good.", status:"pass"},
+          {label:"Checking memory health", pass:"Looks good.", status:"pass"},
+          {label:"Checking drive health", pass:"Looks good.", status:"pass"},
+          {label:"Checking temperatures", pass:"All within normal range.", status:"pass"}
+        ]}
+    ]
+  },
+  software:{
+    label:"Software", tileClass:"tile-software", icon:ICONS.software,
+    desc:"Crashes, updates, and apps",
+    symptoms:[
+      { id:"crash", title:"A program keeps crashing", sub:"Check for common causes of repeated crashes.",
+        checks:[
+          {label:"Reading recent crash logs", bad:"This program has crashed 4 times in the last day.", status:"bad", fix:"Show crash details"},
+          {label:"Checking for corrupt files", pass:"No corrupted files found.", status:"pass"},
+          {label:"Checking for pending updates", warn:"An update is available that may fix this.", status:"warn", fix:"Update this program"}
+        ]},
+      { id:"boot", title:"Computer won't start up properly", sub:"Check startup, updates, and disk issues.",
+        checks:[
+          {label:"Checking startup time", warn:"Startup is slower than usual.", status:"warn", fix:"Manage startup programs"},
+          {label:"Checking Windows Update status", bad:"An update is stuck and needs attention.", status:"bad", fix:"Retry Windows Update"},
+          {label:"Running a quick disk check", pass:"No disk errors found.", status:"pass"}
+        ]},
+      { id:"resource", title:"Something's using too much CPU or RAM", sub:"Find out what's eating your resources.",
+        checks:[
+          {label:"Checking top CPU consumers", warn:"One background app is using significant CPU.", status:"warn", fix:"Show top processes"},
+          {label:"Checking background apps", pass:"Nothing unusual running in the background.", status:"pass"}
+        ]}
+    ]
+  },
+  os:{
+    label:"System", tileClass:"tile-os", icon:ICONS.os,
+    desc:"Windows, updates, and settings",
+    symptoms:[
+      { id:"update", title:"Windows won't update", sub:"Check what's blocking the update process.",
+        checks:[
+          {label:"Checking Windows Update service", pass:"The update service is running.", status:"pass"},
+          {label:"Checking available disk space", bad:"Not enough free space to complete the update.", status:"bad", fix:"Free up disk space"},
+          {label:"Checking for stuck update files", warn:"Some leftover update files may be causing issues.", status:"warn", fix:"Clear update cache"}
+        ]},
+      { id:"settings", title:"Settings keep resetting or acting weird", sub:"Check your system files and user profile.",
+        checks:[
+          {label:"Verifying system files", pass:"All core system files check out.", status:"pass"},
+          {label:"Checking user profile health", warn:"Your profile shows signs of minor corruption.", status:"warn", fix:"Show repair options"}
+        ]},
+      { id:"general", title:"General health check", sub:"A broad look at your system's overall condition.",
+        checks:[
+          {label:"Checking system files", pass:"Looks good.", status:"pass"},
+          {label:"Checking update status", pass:"Up to date.", status:"pass"},
+          {label:"Checking recent errors", pass:"Nothing concerning found.", status:"pass"}
+        ]}
+    ]
+  }
+};
+
+/* ---------- Navigation: home <-> symptoms ---------- */
+let state = { screen:"home", section:null, expandedId:null };
+
+function renderHome(){
+  const grid = document.getElementById("section-grid");
+  grid.innerHTML = "";
+  Object.entries(DATA).forEach(([key, sec])=>{
+    const tile = document.createElement("div");
+    tile.className = `section-tile ${sec.tileClass}`;
+    tile.innerHTML = `
+      <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none">${sec.icon}</svg></div>
+      <h3>${sec.label}</h3>
+      <p>${sec.desc}</p>
+    `;
+    tile.addEventListener("click", ()=> goSymptoms(key));
+    grid.appendChild(tile);
+  });
+}
+
+function goSymptoms(sectionKey){
+  state.section = sectionKey;
+  state.expandedId = null;
+  const sec = DATA[sectionKey];
+  document.getElementById("symptoms-eyebrow").textContent = sec.label;
+  document.getElementById("symptoms-headline").innerHTML = "What seems to be<br/>the problem?";
+  updateTopBack();
+
+  const list = document.getElementById("symptom-list");
+  list.innerHTML = "";
+  sec.symptoms.forEach(sym=>{
+    const card = document.createElement("div");
+    card.className = "symptom-card" + (sym.title.startsWith("Not sure") || sym.title.startsWith("General") ? " catchall":"");
+    card.dataset.id = sym.id;
+    card.innerHTML = `
+      <div class="card-head">
+        <h4>${sym.title}</h4>
+        <p>${sym.sub}</p>
+      </div>
+      <div class="expand-content"></div>
+    `;
+    card.querySelector(".card-head").addEventListener("click", ()=>{
+      if(card.classList.contains("expanded")) return;
+      expandCard(sectionKey, sym.id);
+    });
+    list.appendChild(card);
+  });
+  setScreen("symptoms");
+}
+
+function updateTopBack(){
+  const label = document.getElementById("top-back-label");
+  if(state.expandedId){
+    label.textContent = "All symptoms";
+  } else {
+    label.textContent = "All areas";
+  }
+}
+
+document.getElementById("top-back").addEventListener("click", ()=>{
+  if(state.expandedId){
+    collapseCard();
+  } else {
+    setScreen("home");
+  }
+});
+
+function expandCard(sectionKey, symptomId){
+  state.expandedId = symptomId;
+  updateTopBack();
+
+  const sec = DATA[sectionKey];
+  const sym = sec.symptoms.find(s=>s.id===symptomId);
+  const list = document.getElementById("symptom-list");
+  const cards = [...list.querySelectorAll(".symptom-card")];
+  const clicked = cards.find(c=>c.dataset.id===symptomId);
+
+  cards.forEach(c=>{
+    if(c !== clicked) c.classList.add("sibling-collapsed");
+  });
+
+  clicked.classList.add("expanded");
+  const expandEl = clicked.querySelector(".expand-content");
+  expandEl.innerHTML = `
+    <button class="inline-back" data-collapse>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+      Back to options
+    </button>
+    <div class="detail-sub">We'll check ${sym.checks.length} things related to this.</div>
+    <button class="run-btn">Run diagnostic</button>
+    <div class="check-list"></div>
+    <div class="summary-bar"></div>
+  `;
+  expandEl.querySelector("[data-collapse]").addEventListener("click", (e)=>{
+    e.stopPropagation();
+    collapseCard();
+  });
+
+  const checkList = expandEl.querySelector(".check-list");
+  sym.checks.forEach((c,i)=>{
+    const item = document.createElement("div");
+    item.className = "check-item pending";
+    item.dataset.index = i;
+    item.innerHTML = `
+      <div class="check-icon pending">•</div>
+      <div class="check-body">
+        <div class="check-title">${c.label}</div>
+        <div class="check-result" style="display:none"></div>
+      </div>
+    `;
+    checkList.appendChild(item);
+  });
+
+  expandEl.querySelector(".run-btn").addEventListener("click", (e)=>{
+    e.stopPropagation();
+    runDiagnostic(sym, expandEl);
+  });
+
+  // trigger the reveal on the next frame so the transition actually plays
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=> expandEl.classList.add("open"));
+  });
+}
+
+function collapseCard(){
+  const list = document.getElementById("symptom-list");
+  const expanded = list.querySelector(".symptom-card.expanded");
+  if(!expanded) return;
+
+  const expandEl = expanded.querySelector(".expand-content");
+  expandEl.classList.remove("open");
+
+  setTimeout(()=>{
+    expanded.classList.remove("expanded");
+    expandEl.innerHTML = "";
+    list.querySelectorAll(".sibling-collapsed").forEach(c=> c.classList.remove("sibling-collapsed"));
+  }, 480);
+
+  state.expandedId = null;
+  updateTopBack();
+}
+
+function runDiagnostic(sym, scope){
+  const runBtn = scope.querySelector(".run-btn");
+  runBtn.disabled = true;
+  runBtn.textContent = "Checking…";
+
+  const items = [...scope.querySelectorAll(".check-item")];
+  let issues = 0;
+
+  items.forEach((item, i)=>{
+    setTimeout(()=>{
+      const icon = item.querySelector(".check-icon");
+      icon.className = "check-icon spin";
+      icon.textContent = "";
+    }, i*550);
+
+    setTimeout(()=>{
+      const c = sym.checks[i];
+      item.className = "check-item " + c.status;
+      const icon = item.querySelector(".check-icon");
+      icon.className = "check-icon " + c.status;
+      icon.textContent = c.status==="pass" ? "✓" : c.status==="warn" ? "!" : "✕";
+      const resultEl = item.querySelector(".check-result");
+      resultEl.style.display = "block";
+      resultEl.textContent = c.pass || c.warn || c.bad;
+
+      if(c.status !== "pass"){
+        issues++;
+        const fixBtn = document.createElement("button");
+        fixBtn.className = "fix-btn";
+        fixBtn.textContent = c.fix || "Fix this";
+        fixBtn.onclick = (e)=>{
+          e.stopPropagation();
+          fixBtn.textContent = "✓ Applied";
+          fixBtn.classList.add("applied");
+        };
+        item.querySelector(".check-body").appendChild(fixBtn);
+      }
+
+      if(i === items.length-1){
+        runBtn.textContent = "Run again";
+        runBtn.disabled = false;
+        const summary = scope.querySelector(".summary-bar");
+        summary.classList.add("show");
+        if(issues===0){
+          summary.classList.remove("has-issues");
+          summary.textContent = "Everything checks out — no issues found here.";
+        } else {
+          summary.classList.add("has-issues");
+          summary.textContent = `Found ${issues} thing${issues>1?"s":""} worth fixing above.`;
+        }
+      }
+    }, i*550 + 500);
+  });
+}
+
+function setScreen(name){
+  state.screen = name;
+  const all = [...document.querySelectorAll(".screen")];
+  const incoming = all.find(s => s.dataset.screen === name);
+  const outgoing = all.find(s => s.classList.contains("active") && s !== incoming);
+
+  if(outgoing){
+    outgoing.classList.remove("active");
+    outgoing.classList.add("leaving");
+    setTimeout(()=> outgoing.classList.remove("leaving"), 550);
+  }
+
+  requestAnimationFrame(()=>{
+    setTimeout(()=> incoming.classList.add("active"), 90);
+  });
+}
+
+renderHome();
+
+/* ---------- Driver update panel ---------- */
+const DRIVERS = [
+  { vendor:"Windows Update", name:"Realtek High Definition Audio", current:"6.0.9375.1", latest:"6.0.9412.1", method:"wu" },
+  { vendor:"Windows Update", name:"Logitech HID-compliant mouse", current:"2.10.44", latest:"2.10.61", method:"wu" },
+  { vendor:"NVIDIA", name:"GeForce RTX 4070 Graphics Driver", current:"551.23", latest:"566.14", method:"linkout" },
+  { vendor:"NVIDIA", name:"NVIDIA HD Audio Driver", current:"1.3.42.2", latest:"1.4.10.1", method:"direct" },
+  { vendor:"Intel", name:"Intel Chipset Device Software", current:"10.1.19", latest:"10.1.19604", method:"linkout" },
+  { vendor:"Intel", name:"Intel Wi-Fi 6 AX201 Adapter", current:"22.140.0", latest:"22.230.1", method:"direct" },
+  { vendor:"MSI", name:"MSI Mainboard BIOS", current:"7D25v1A", latest:"7D25v1C", method:"linkout" },
+  { vendor:"HP", name:"HP OfficeJet Pro 9015 Printer Driver", current:"41.2.1147", latest:"41.3.1190", method:"direct" },
+  { vendor:"Brother", name:"Brother HL-L2350DW Printer Driver", current:"3.9.0", latest:"4.1.2", method:"direct" },
+  { vendor:"Beacn", name:"Beacn Mic Audio Interface", current:"1.4.0", latest:"1.6.2", method:"direct" },
+];
+
+let selectedDrivers = new Set();
+
+document.getElementById("driver-entry").addEventListener("click", ()=> goDrivers());
+document.getElementById("drivers-back").addEventListener("click", ()=>{
+  document.getElementById("update-bar").classList.remove("show");
+  setScreen("home");
+});
+
+function goDrivers(){
+  selectedDrivers = new Set();
+  document.getElementById("drivers-headline").textContent = "Scanning your system…";
+  document.getElementById("drivers-loading").style.display = "block";
+  document.getElementById("drivers-panel").style.display = "none";
+  document.getElementById("loading-fill").style.width = "0%";
+  setScreen("drivers");
+
+  const steps = [
+    { pct:22, label:"Reading installed devices…" },
+    { pct:48, label:"Checking Windows Update catalog…" },
+    { pct:70, label:"Checking manufacturer catalogs…" },
+    { pct:100, label:"Comparing versions…" },
+  ];
+  steps.forEach((s,i)=>{
+    setTimeout(()=>{
+      document.getElementById("loading-fill").style.width = s.pct + "%";
+      document.getElementById("loading-label").textContent = s.label;
+    }, i*550);
+  });
+
+  setTimeout(renderDrivers, steps.length*550 + 300);
+}
+
+function renderDrivers(){
+  document.getElementById("drivers-loading").style.display = "none";
+  document.getElementById("drivers-panel").style.display = "block";
+  document.getElementById("drivers-headline").textContent = "Here's what we found";
+
+  const vendors = [...new Set(DRIVERS.map(d=>d.vendor))];
+  document.getElementById("drivers-count").textContent = DRIVERS.length;
+  document.getElementById("vendor-count").textContent = vendors.length;
+
+  const container = document.getElementById("drivers-groups");
+  container.innerHTML = "";
+
+  vendors.forEach(vendor=>{
+    const group = document.createElement("div");
+    group.className = "vendor-group";
+    group.innerHTML = `<div class="vendor-header">${vendor}</div>`;
+
+    DRIVERS.filter(d=>d.vendor===vendor).forEach(d=>{
+      const row = document.createElement("div");
+      const canSelect = d.method !== "linkout";
+      row.className = "driver-row" + (canSelect ? " selectable" : "");
+
+      const badgeText = d.method==="wu" ? "Windows Update" : d.method==="direct" ? "Direct" : "Manual";
+      const badgeClass = d.method;
+
+      row.innerHTML = `
+        <div class="driver-check ${canSelect ? "" : "disabled"}" data-id="${d.name}"></div>
+        <div class="driver-info">
+          <div class="driver-name">${d.name}</div>
+          <div class="driver-versions">${d.current}<span class="arrow">→</span><span class="new">${d.latest}</span></div>
+        </div>
+        <div class="driver-badge ${badgeClass}">${badgeText}</div>
+        ${canSelect ? "" : `<button class="driver-link-btn" data-link="${d.name}">View Update</button>`}
+      `;
+
+      if(canSelect){
+        const check = row.querySelector(".driver-check");
+        const toggle = ()=>{
+          if(selectedDrivers.has(d.name)){
+            selectedDrivers.delete(d.name);
+            check.classList.remove("checked");
+            row.classList.remove("checked");
+          } else {
+            selectedDrivers.add(d.name);
+            check.classList.add("checked");
+            row.classList.add("checked");
+          }
+          updateSelectionBar();
+        };
+        check.addEventListener("click", toggle);
+        row.querySelector(".driver-info").addEventListener("click", toggle);
+      } else {
+        row.querySelector(".driver-link-btn").addEventListener("click", (e)=>{
+          e.stopPropagation();
+          const btn = e.target;
+          btn.textContent = "Opening…";
+          setTimeout(()=>{ btn.textContent = "View Update"; }, 900);
+        });
+      }
+
+      group.appendChild(row);
+    });
+
+    container.appendChild(group);
+  });
+
+  updateSelectionBar();
+}
+
+function updateSelectionBar(){
+  const bar = document.getElementById("update-bar");
+  const count = selectedDrivers.size;
+  document.getElementById("selected-count").textContent = count===0 ? "0 selected" : `${count} selected`;
+  const btn = document.getElementById("update-btn");
+  btn.disabled = count===0;
+  bar.classList.toggle("show", true);
+  btn.textContent = count>0 ? `Update Selected (${count})` : "Update Selected";
+}
+
+document.getElementById("update-btn").addEventListener("click", ()=>{
+  const btn = document.getElementById("update-btn");
+  if(btn.disabled) return;
+  btn.textContent = "Updating…";
+  btn.disabled = true;
+  setTimeout(()=>{
+    btn.textContent = "✓ Updated";
+    setTimeout(()=>{
+      selectedDrivers.forEach(name=>{
+        const row = [...document.querySelectorAll(".driver-name")].find(el=>el.textContent===name)?.closest(".driver-row");
+        if(row) row.querySelector(".driver-versions").innerHTML = `<span class="new">Up to date</span>`;
+      });
+      selectedDrivers.clear();
+      updateSelectionBar();
+      document.getElementById("update-btn").textContent = "Update Selected";
+    }, 900);
+  }, 1400);
+});
+
+/* ---------- Ambient vitals sparklines ---------- */
+function makeSparkline(canvasId, baseline, variance, color){
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext("2d");
+  function size(){
+    canvas.width = canvas.clientWidth * devicePixelRatio;
+    canvas.height = canvas.clientHeight * devicePixelRatio;
+  }
+  size();
+  window.addEventListener("resize", size);
+  const points = new Array(28).fill(baseline);
+  function tick(){
+    points.shift();
+    points.push(Math.max(2, Math.min(98, baseline + (Math.random()-0.5)*variance)));
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.beginPath();
+    points.forEach((p,i)=>{
+      const x = (i/(points.length-1))*w;
+      const y = h - (p/100)*h;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6*devicePixelRatio;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
+  tick();
+  setInterval(tick, 700);
+}
+makeSparkline("vc-net", 40, 50, "#5ec8f0");
+makeSparkline("vc-cpu", 20, 25, "#35d0ba");
+makeSparkline("vc-ram", 60, 15, "#e8b84b");
+makeSparkline("vc-disk", 15, 20, "#b496f0");
+</script>
+
+</body>
+</html>

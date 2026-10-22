@@ -1,0 +1,442 @@
+<UserControl x:Class="RoninVitals.Views.SymptomsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RoninVitals.ViewModels"
+             xmlns:models="clr-namespace:RoninVitals.Models"
+             xmlns:conv="clr-namespace:RoninVitals.Converters"
+             xmlns:svc="clr-namespace:RoninVitals.Services">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
+        <conv:InverseBoolConverter x:Key="InvBool"/>
+        <conv:BoolToStringConverter x:Key="BoolToStr"/>
+        <svc:CheckStatusToBrushConverter x:Key="StatusBrush"/>
+        <svc:CheckStatusToDimBrushConverter x:Key="StatusDimBrush"/>
+        <svc:CheckStatusToGlyphConverter x:Key="StatusGlyph"/>
+        <conv:TechConsoleWidthConverter x:Key="TechWidth"/>
+
+        <Style x:Key="CardHeaderButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="28,24,28,24">
+    <StackPanel MaxWidth="{Binding ExpandedCard.IsTechConsoleVisible, Converter={StaticResource TechWidth}, FallbackValue=760}" HorizontalAlignment="Center">
+        <!-- Fixed width, never animated, independent of the Grid below - this is what keeps it
+             visually stationary regardless of how wide the outer StackPanel (see MaxWidth above)
+             grows for the console. Both this StackPanel and the outer one are horizontally
+             centered on the page; centering a fixed-width box inside a wider-but-also-centered
+             box lands it at the exact same screen position no matter how much wider the outer
+             box gets - the math cancels out. That's deliberate: the owner wants the header to
+             never move at all, only the checklist box below it. Width matches CardsColumn's own
+             base (non-tech-mode) width so the two line up by default. -->
+        <StackPanel Width="500" HorizontalAlignment="Center">
+            <Button Content="{Binding BackLabel}" Command="{Binding BackCommand}" Style="{StaticResource Vitals.BackButton}"/>
+            <TextBlock Text="{Binding SectionLabel}" Style="{StaticResource Vitals.Text.Eyebrow}" Margin="0,10,0,6"/>
+            <TextBlock Text="What seems to be the problem?" Style="{StaticResource Vitals.Text.Headline}" Margin="0,0,0,20"/>
+        </StackPanel>
+
+        <!-- Tech Mode split: the console is a true sibling box next to the cards column, not
+             nested inside any one card's own Border - so the expanded card's box only ever
+             narrows/shifts, it never stretches to absorb the console into itself. Both this
+             column's width and the console's width/opacity/scale are animated off the same
+             ExpandedCard.IsTechConsoleVisible trigger, which SymptomCardViewModel.RunDiagnosticAsync
+             flips true ~1s after a run starts (Tech Mode only). -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel x:Name="CardsColumn" Grid.Column="0" Width="500" HorizontalAlignment="Left">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ExpandedCard.IsTechConsoleVisible}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Width" To="450" Duration="0:0:0.4">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Width" To="500" Duration="0:0:0.3"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+
+        <ItemsControl ItemsSource="{Binding Cards}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:SymptomCardViewModel}">
+                    <Border Margin="0,0,0,10" CornerRadius="14" BorderThickness="1"
+                            Visibility="{Binding IsSiblingCollapsed, Converter={StaticResource InvBoolToVis}}"
+                            Effect="{StaticResource Vitals.CardShadow}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{StaticResource Vitals.Surface.Brush}"/>
+                                <Setter Property="BorderBrush" Value="{StaticResource Vitals.Border.Brush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource Vitals.Surface2.Brush}"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource Vitals.Teal.Brush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsCatchAll}" Value="True">
+                                        <Setter Property="BorderBrush" Value="{StaticResource Vitals.Border.Brush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <StackPanel>
+                            <Button Style="{StaticResource CardHeaderButton}" Command="{Binding ExpandCommand}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" Style="{StaticResource Vitals.Text.CardTitle}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Vitals.Text.Body}"/>
+                                </StackPanel>
+                            </Button>
+
+                            <StackPanel Visibility="Collapsed" Opacity="0" Margin="16,0,16,18" Loaded="ExpandPanel_Loaded">
+                                <Button Content="Back to options" Command="{Binding CollapseCommand}" Style="{StaticResource Vitals.InlineBackButton}" Margin="0,0,0,12"/>
+
+                                <!-- "Gathering information..." pre-flight step - shown once per expand, before
+                                     the checklist appears. Animated ellipsis + a traveling copy of the app's
+                                     pulse-line glyph sweeping left to right, looping - not a percentage bar,
+                                     since there's nothing meaningful to measure progress against. -->
+                                <StackPanel Visibility="{Binding IsGatheringInfo, Converter={StaticResource BoolToVis}}"
+                                            HorizontalAlignment="Center" Margin="0,32,0,32">
+                                    <StackPanel x:Name="GatheringLabelRow" Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <TextBlock Text="Gathering information" FontSize="13.5" Foreground="{StaticResource Vitals.Text.Brush}"/>
+                                        <TextBlock Width="22" FontSize="13.5" Foreground="{StaticResource Vitals.Text.Brush}">
+                                            <TextBlock.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Text" Duration="0:0:1.2">
+                                                                <DiscreteObjectKeyFrame KeyTime="0:0:0" Value=""/>
+                                                                <DiscreteObjectKeyFrame KeyTime="0:0:0.3" Value="."/>
+                                                                <DiscreteObjectKeyFrame KeyTime="0:0:0.6" Value=".."/>
+                                                                <DiscreteObjectKeyFrame KeyTime="0:0:0.9" Value="..."/>
+                                                            </ObjectAnimationUsingKeyFrames>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </TextBlock.Triggers>
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <!-- Real EKG-strip layout: 3 separate beat groups laid side by side (not
+                                         stacked peaks within one bump), each group a different main-peak height
+                                         and valley depth, like an actual heart monitor trace. Stretch="Fill"
+                                         forces the Canvas's fixed 80x32 coordinate space to fill whatever width
+                                         is bound below, so the glyph always spans the full width of the
+                                         "Gathering information..." text row regardless of its own aspect ratio. -->
+                                    <Viewbox Width="{Binding ActualWidth, ElementName=GatheringLabelRow}" Height="32"
+                                             Stretch="Fill" Margin="0,20,0,0" HorizontalAlignment="Center">
+                                        <Canvas Width="80" Height="32">
+                                            <!-- Draws itself in from blank (line-drawing reveal, see StrokeDashArray/
+                                                 Offset note below) rather than sliding a finished icon across.
+                                                 Baseline sits at y=22. Each of the 3 beat groups is: flat lead-in
+                                                 (h) -> small dip below baseline (l dipRunX,dipDepth) -> spike above
+                                                 baseline (l spikeRunX,-riseToApex) -> return exactly to baseline
+                                                 (l returnRunX,returnDepth) -> flat gap before the next group (h).
+                                                 Group 1 (x2-30): dip 5 deep, spike apex y=4 -> peak height 18 above
+                                                 baseline, the tallest. Group 2 (x30-55): dip 4 deep, apex y=9 ->
+                                                 peak height 13. Group 3 (x55-76): dip 3 deep, apex y=14 -> peak
+                                                 height 8, the shortest. To make any group's main spike taller,
+                                                 make its "-N" rise value more negative (keep the matching return
+                                                 value equal and positive so the line lands back on baseline=22);
+                                                 to make a dip/valley deeper, increase that dip segment's second
+                                                 number. The three "h10"/"h6" runs are the flat gaps between groups
+                                                 - lengthen them to spread the groups further apart. -->
+                                            <Path Data="M2 22h6l3 5 5-23 4 18h10l6 4 5-17 4 13h10l6 3 5-11 4 8h6" Stroke="{StaticResource Vitals.Blue.Brush}"
+                                                  StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  StrokeDashArray="80,80" StrokeDashOffset="80">
+                                                <Path.Triggers>
+                                                    <EventTrigger RoutedEvent="Loaded">
+                                                        <BeginStoryboard>
+                                                            <Storyboard RepeatBehavior="Forever">
+                                                                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="StrokeDashOffset">
+                                                                    <EasingDoubleKeyFrame KeyTime="0:0:0" Value="80"/>
+                                                                    <EasingDoubleKeyFrame KeyTime="0:0:1.1" Value="0"/>
+                                                                    <DiscreteDoubleKeyFrame KeyTime="0:0:1.7" Value="0"/>
+                                                                </DoubleAnimationUsingKeyFrames>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </EventTrigger>
+                                                </Path.Triggers>
+                                            </Path>
+                                        </Canvas>
+                                    </Viewbox>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding IsGatheringInfo, Converter={StaticResource InvBoolToVis}}">
+                                <TextBlock Style="{StaticResource Vitals.Text.Body}" FontSize="12.5" Margin="0,0,0,14">
+                                    <Run Text="We'll check "/><Run Text="{Binding CheckCount, Mode=OneWay}"/><Run Text=" things related to this."/>
+                                </TextBlock>
+
+                                <Button Content="{Binding RunButtonLabel}" Style="{StaticResource Vitals.PrimaryButton}"
+                                        Command="{Binding RunDiagnosticCommand}"
+                                        IsEnabled="{Binding IsRunning, Converter={StaticResource InvBool}}" Margin="0,0,0,4"/>
+
+                                <ItemsControl ItemsSource="{Binding Checks}" Margin="0,16,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:CheckItemViewModel}">
+                                            <Border Background="{StaticResource Vitals.Surface3.Brush}" BorderBrush="{StaticResource Vitals.Border.Brush}"
+                                                    BorderThickness="1" CornerRadius="11" Padding="12,11" Margin="0,0,0,8">
+                                                <!-- A Grid, not a horizontal StackPanel, for the icon+text layout - a
+                                                     StackPanel measures its children with infinite width in the
+                                                     stacking direction, so the text column (and everything inside
+                                                     it, including the wrapped ResultText/FixMessage TextBlocks) never
+                                                     actually got a bounded width to wrap against and just ran past
+                                                     the card's edge instead. Grid's "*" column gives it a real,
+                                                     finite width, which is what TextWrapping="Wrap" needs to do
+                                                     anything at all. -->
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Width="20" Height="20" CornerRadius="10" Margin="0,1,11,0" VerticalAlignment="Top"
+                                                            Background="{Binding Status, Converter={StaticResource StatusDimBrush}}">
+                                                        <Grid>
+                                                        <TextBlock Text="{Binding Status, Converter={StaticResource StatusGlyph}}"
+                                                                   FontFamily="{StaticResource Vitals.Font.Icons}" FontSize="10"
+                                                                   Foreground="{Binding Status, Converter={StaticResource StatusBrush}}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        <Ellipse Width="13" Height="13" StrokeThickness="2" Stroke="{StaticResource Vitals.Blue.Brush}"
+                                                                 StrokeDashArray="2.4,2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <Ellipse.RenderTransform>
+                                                                <RotateTransform x:Name="SpinnerRotate" Angle="0" CenterX="6.5" CenterY="6.5"/>
+                                                            </Ellipse.RenderTransform>
+                                                            <Ellipse.Style>
+                                                                <Style TargetType="Ellipse">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Status}" Value="Running">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                            <DataTrigger.EnterActions>
+                                                                                <BeginStoryboard x:Name="SpinStoryboard">
+                                                                                    <Storyboard>
+                                                                                        <DoubleAnimation Storyboard.TargetProperty="(Ellipse.RenderTransform).(RotateTransform.Angle)"
+                                                                                                          From="0" To="360" Duration="0:0:0.9" RepeatBehavior="Forever"/>
+                                                                                    </Storyboard>
+                                                                                </BeginStoryboard>
+                                                                            </DataTrigger.EnterActions>
+                                                                            <DataTrigger.ExitActions>
+                                                                                <StopStoryboard BeginStoryboardName="SpinStoryboard"/>
+                                                                            </DataTrigger.ExitActions>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Ellipse.Style>
+                                                        </Ellipse>
+                                                        </Grid>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Label}" FontSize="13" Foreground="{StaticResource Vitals.Text.Brush}" TextWrapping="Wrap"/>
+                                                        <TextBlock Text="{Binding ResultText}" Style="{StaticResource Vitals.Text.Body}" FontSize="12" Margin="0,2,0,0"
+                                                                   Visibility="{Binding ShowResult, Converter={StaticResource BoolToVis}}"/>
+                                                        <Button Style="{StaticResource Vitals.FixButton}" Margin="0,8,0,0"
+                                                                Command="{Binding ApplyFixCommand}"
+                                                                Visibility="{Binding ShowFixArea, Converter={StaticResource BoolToVis}}"
+                                                                IsEnabled="{Binding FixApplied, Converter={StaticResource InvBool}}">
+                                                            <TextBlock>
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="{Binding FixLabel}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding FixInProgress}" Value="True">
+                                                                                <Setter Property="Text" Value="Working..."/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding FixApplied}" Value="True">
+                                                                                <Setter Property="Text" Value="✓ Applied"/>
+                                                                            </DataTrigger>
+                                                                            <!-- Overrides the trigger above for entries with no real ApplyFix (just
+                                                                                 static advice, e.g. a router setting Vitals can't touch) - "Applied"
+                                                                                 is misleading when nothing was actually changed. Listed after the
+                                                                                 simple FixApplied trigger so it wins for this more specific case. -->
+                                                                            <MultiDataTrigger>
+                                                                                <MultiDataTrigger.Conditions>
+                                                                                    <Condition Binding="{Binding FixApplied}" Value="True"/>
+                                                                                    <Condition Binding="{Binding IsRealFix}" Value="False"/>
+                                                                                </MultiDataTrigger.Conditions>
+                                                                                <Setter Property="Text" Value="✓ Tips shown"/>
+                                                                            </MultiDataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </Button>
+                                                        <TextBlock Text="{Binding FixMessage}" Style="{StaticResource Vitals.Text.Body}" FontSize="11" Margin="0,4,0,0"
+                                                                   TextWrapping="Wrap"
+                                                                   Visibility="{Binding HasFixMessage, Converter={StaticResource BoolToVis}}"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border Margin="0,4,0,0" CornerRadius="11" Padding="12,10"
+                                        Visibility="{Binding ShowSummary, Converter={StaticResource BoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource Vitals.TealDim.Brush}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource Vitals.TealBorderTint.Brush}"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SummaryHasIssues}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource Vitals.YellowDim.Brush}"/>
+                                                    <Setter Property="BorderBrush" Value="{StaticResource Vitals.YellowBorderTint.Brush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding SummaryText}" FontSize="12.5" TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource Vitals.TealLight.Brush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SummaryHasIssues}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Vitals.YellowLight.Brush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
+
+        <!-- Technician console panel - a true sibling of CardsColumn, not nested inside any
+             one card's own Border, so the expanded card's box only ever narrows/shifts and
+             never has to stretch to absorb this into itself. DataContext is set to
+             ExpandedCard so everything below binds directly against SymptomCardViewModel's
+             Console/IsTechConsoleVisible, same as if it were still nested inside that card's
+             template. Height is bound to CardsColumn's own ActualHeight (an ElementName binding -
+             works here because both are direct siblings in this view, not inside the per-card
+             DataTemplate, which has its own NameScope ElementName can't reach into) rather than
+             a fixed number, so the two boxes always match height exactly instead of the console
+             being some arbitrary size unrelated to how tall the checklist actually is.
+             Width/Opacity/Visibility/scale, unlike Height, are NOT driven by a declarative
+             DataTrigger here - that was tried first and proved unreliable across repeated
+             expand/collapse/re-expand cycles (the panel could get stuck visible, or visible-but-
+             shrunk, after going Back and re-entering a card - a DataTrigger watching a binding
+             whose source object cycles through null doesn't reliably replay its Enter/ExitActions
+             every time). ConsolePanel_Loaded in the code-behind explicitly subscribes to
+             ExpandedCard/IsTechConsoleVisible changes and drives Width/Opacity/Scale/Visibility
+             with BeginAnimation calls it fully owns, the same deterministic pattern already used
+             for the card's own expand/collapse height animation (see ExpandPanel_Loaded above) -
+             more code, but no ambiguity about what state it's in after N cycles. -->
+        <Border x:Name="ConsolePanel" Grid.Column="1" Width="0" Height="{Binding ActualHeight, ElementName=CardsColumn}" Opacity="0"
+                Visibility="Collapsed" Margin="16,0,0,0"
+                DataContext="{Binding ExpandedCard}"
+                Loaded="ConsolePanel_Loaded"
+                CornerRadius="14" BorderThickness="1" ClipToBounds="True"
+                                            Background="{StaticResource Vitals.Console.Brush}" BorderBrush="{StaticResource Vitals.Border.Brush}"
+                                            Effect="{StaticResource Vitals.CardShadow}">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform x:Name="ConsoleScale" ScaleX="0.9" ScaleY="0.9" CenterX="0" CenterY="80"/>
+                                        </Border.RenderTransform>
+
+                                        <DockPanel Margin="16" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Top" Text="TECHNICIAN CONSOLE" Style="{StaticResource Vitals.Text.Eyebrow}"
+                                                       FontSize="11" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+
+                                            <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding Console.InputText, UpdateSourceTrigger=PropertyChanged}"
+                                                         Background="{StaticResource Vitals.Surface3.Brush}" Foreground="{StaticResource Vitals.Text.Brush}"
+                                                         CaretBrush="{StaticResource Vitals.Text.Brush}"
+                                                         FontFamily="{StaticResource Vitals.Font.Mono}" FontSize="12" BorderThickness="1"
+                                                         BorderBrush="{StaticResource Vitals.Border.Brush}" Padding="8,6"
+                                                         IsEnabled="{Binding Console.IsBusy, Converter={StaticResource InvBool}}">
+                                                    <TextBox.InputBindings>
+                                                        <KeyBinding Key="Return" Command="{Binding Console.RunInputCommand}"/>
+                                                    </TextBox.InputBindings>
+                                                </TextBox>
+                                                <Button Grid.Column="1" Content="Run" Margin="8,0,0,0" Padding="12,0"
+                                                        Command="{Binding Console.RunInputCommand}"
+                                                        IsEnabled="{Binding Console.IsBusy, Converter={StaticResource InvBool}}"
+                                                        Style="{StaticResource Vitals.FixButton}"/>
+                                            </Grid>
+
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl ItemsSource="{Binding Console.Lines}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="{x:Type models:ConsoleLine}">
+                                                            <TextBlock Text="{Binding Text}" FontFamily="{StaticResource Vitals.Font.Mono}"
+                                                                       FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,3">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="{StaticResource Vitals.MutedDim.Brush}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Kind}" Value="Command">
+                                                                                <Setter Property="Foreground" Value="{StaticResource Vitals.TealLight.Brush}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </DockPanel>
+                                    </Border>
+        </Grid>
+    </StackPanel>
+    </ScrollViewer>
+
+    <!-- Tech Mode toggle - sits in the dead space to the right of the centered content
+         column, not inside it (see the mockup this was built from). Hides once a card is
+         expanded; the toggle only makes sense on the "what's the problem" picker, and the
+         flag it sets is read fresh when a diagnostic run starts, not live-watched, so it
+         doesn't need to stay visible/interactive past that point. -->
+    <StackPanel Visibility="{Binding ShowTechToggle, Converter={StaticResource BoolToVis}}"
+                Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,92,32,0">
+        <TextBlock Text="TECH MODE" Style="{StaticResource Vitals.Text.Eyebrow}" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"/>
+        <ToggleButton Style="{StaticResource Vitals.ToggleSwitch}" IsChecked="{Binding IsTechMode, Mode=TwoWay}" VerticalAlignment="Center"/>
+    </StackPanel>
+    </Grid>
+</UserControl>

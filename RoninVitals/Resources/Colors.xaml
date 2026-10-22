@@ -1,0 +1,117 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CONFIG — every color and tint the app uses lives here, named and
+         grouped, the same way Portier/Disk Manager keep a single "Ronin
+         brand colours" block up top. To retheme the app, change a value in
+         this file; nothing outside Resources/ should hardcode a hex color.
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- ── Background (window canvas) - mirrors the app icon: dark red confined
+         to the top-left corner with a wide soft blend into near-black charcoal. ── -->
+    <Color x:Key="Vitals.BgGradientStart.Color">#420202</Color>
+    <Color x:Key="Vitals.Bg.Color">#161212</Color>
+
+    <!-- ── Card/panel fill surfaces (unaffected by the background gradient -
+         cards are solid, opaque swatches sitting on top of it) ── -->
+    <Color x:Key="Vitals.Surface.Color">#0E0E0E</Color>
+    <Color x:Key="Vitals.Surface2.Color">#171111</Color>
+    <Color x:Key="Vitals.Surface3.Color">#201818</Color>
+
+    <!-- ── Borders/outlines - a quiet neutral now; cards read via a faint orange
+         drop shadow instead (see Vitals.CardShadow in Controls.xaml). Orange
+         borders are reserved for interactive/selected states only. ── -->
+    <Color x:Key="Vitals.Border.Color">#241C1C</Color>
+    <Color x:Key="Vitals.BorderHover.Color">#D0601A</Color>
+
+    <!-- ── Primary brand accent - orange, the dominant color like Portier/Disk
+         Manager. Buttons, wordmark, pass status, selected borders. ── -->
+    <Color x:Key="Vitals.Teal.Color">#E06020</Color>
+    <Color x:Key="Vitals.TealDeep.Color">#B04010</Color>
+
+    <!-- ── Icon accent - cyan. Every section/topic icon glyph uses this,
+         distinct from the orange brand/border/status colors. ── -->
+    <Color x:Key="Vitals.Blue.Color">#00D8F0</Color>
+
+    <!-- ── Status colors (functional, not decorative - kept distinct from the
+         brand/icon colors above so pass/warn/bad stay scannable at a glance) ── -->
+    <Color x:Key="Vitals.Yellow.Color">#C8862E</Color>
+    <Color x:Key="Vitals.Red.Color">#CC2200</Color>
+    <Color x:Key="Vitals.Purple.Color">#A8A8A8</Color>
+
+    <!-- ── Text - kept legible against the busier orange/red chrome ── -->
+    <Color x:Key="Vitals.Text.Color">#E6E3E3</Color>
+    <Color x:Key="Vitals.Muted.Color">#C2C0C2</Color>
+    <Color x:Key="Vitals.MutedDim.Color">#807E7E</Color>
+    <Color x:Key="Vitals.Console.Color">#3D3C3C</Color>
+
+    <!-- ── "New version available" text in the driver update table - a distinct
+         green so it doesn't compete with the orange primary accent. ── -->
+    <Color x:Key="Vitals.Version.Color">#71DE02</Color>
+
+    <!-- ── Light readable tints for status text on a tinted-dark summary bar - also used as
+         the check-item status-glyph foreground (paired with a neutral Surface3 badge instead
+         of a same-hue low-opacity tint, since orange-on-tinted-orange read as too low-contrast) ── -->
+    <Color x:Key="Vitals.TealLight.Color">#08C4B7</Color>
+    <Color x:Key="Vitals.YellowLight.Color">#D6C504</Color>
+    <Color x:Key="Vitals.RedLight.Color">#CF2323</Color>
+    <Color x:Key="Vitals.Green.Color">#04B004</Color>
+
+    <!-- ── Dark text/glyph color for use on filled orange surfaces (buttons,
+         checked checkboxes, the brand-mark badge) ── -->
+    <Color x:Key="Vitals.OnAccent.Color">#2A1200</Color>
+
+    <!-- ══════════════════ Brushes (derived from the colors above) ══════════════════ -->
+
+    <LinearGradientBrush x:Key="Vitals.Bg.Brush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource Vitals.BgGradientStart.Color}" Offset="0"/>
+        <GradientStop Color="{StaticResource Vitals.BgGradientStart.Color}" Offset="0.15"/>
+        <GradientStop Color="{StaticResource Vitals.Bg.Color}" Offset="0.55"/>
+        <GradientStop Color="{StaticResource Vitals.Bg.Color}" Offset="1"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="Vitals.Surface.Brush" Color="{StaticResource Vitals.Surface.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Surface2.Brush" Color="{StaticResource Vitals.Surface2.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Surface3.Brush" Color="{StaticResource Vitals.Surface3.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Border.Brush" Color="{StaticResource Vitals.Border.Color}"/>
+    <SolidColorBrush x:Key="Vitals.BorderHover.Brush" Color="{StaticResource Vitals.BorderHover.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Teal.Brush" Color="{StaticResource Vitals.Teal.Color}"/>
+    <SolidColorBrush x:Key="Vitals.TealDeep.Brush" Color="{StaticResource Vitals.TealDeep.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Blue.Brush" Color="{StaticResource Vitals.Blue.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Yellow.Brush" Color="{StaticResource Vitals.Yellow.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Red.Brush" Color="{StaticResource Vitals.Red.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Purple.Brush" Color="{StaticResource Vitals.Purple.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Text.Brush" Color="{StaticResource Vitals.Text.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Muted.Brush" Color="{StaticResource Vitals.Muted.Color}"/>
+    <SolidColorBrush x:Key="Vitals.MutedDim.Brush" Color="{StaticResource Vitals.MutedDim.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Console.Brush" Color="{StaticResource Vitals.Console.Color}"/>
+    <SolidColorBrush x:Key="Vitals.TealLight.Brush" Color="{StaticResource Vitals.TealLight.Color}"/>
+    <SolidColorBrush x:Key="Vitals.YellowLight.Brush" Color="{StaticResource Vitals.YellowLight.Color}"/>
+    <SolidColorBrush x:Key="Vitals.RedLight.Brush" Color="{StaticResource Vitals.RedLight.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Green.Brush" Color="{StaticResource Vitals.Green.Color}"/>
+    <SolidColorBrush x:Key="Vitals.OnAccent.Brush" Color="{StaticResource Vitals.OnAccent.Color}"/>
+    <SolidColorBrush x:Key="Vitals.Version.Brush" Color="{StaticResource Vitals.Version.Color}"/>
+
+    <!-- Tinted "dim" backgrounds - status summary bars and the icon-wrap swatch
+         behind every section/topic icon (cyan, matching the icon color above). -->
+    <SolidColorBrush x:Key="Vitals.TealDim.Brush" Color="#24E06020"/>
+    <SolidColorBrush x:Key="Vitals.YellowDim.Brush" Color="#60C8862E"/>
+    <SolidColorBrush x:Key="Vitals.RedDim.Brush" Color="#60CC2200"/>
+    <SolidColorBrush x:Key="Vitals.BlueDim.Brush" Color="#2400D8F0"/>
+    <SolidColorBrush x:Key="Vitals.GreenDim.Brush" Color="#6004B004"/>
+
+    <!-- Summary-bar border tints (more opaque than the *Dim fills above). -->
+    <SolidColorBrush x:Key="Vitals.TealBorderTint.Brush" Color="#4DE06020"/>
+    <SolidColorBrush x:Key="Vitals.YellowBorderTint.Brush" Color="#4DC8862E"/>
+
+    <!-- Semi-transparent scrim behind the top vitals-strip bar, over the background gradient. -->
+    <SolidColorBrush x:Key="Vitals.TopBarOverlay.Brush" Color="#99171111"/>
+
+    <!-- Soft gray area fill under the drive-vitals sparkline (a flat usage line, not a
+         time series) - grounds the line instead of leaving empty card space below it. -->
+    <LinearGradientBrush x:Key="Vitals.SparkShadow.Brush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#4D807E7E" Offset="0"/>
+        <GradientStop Color="#00807E7E" Offset="1"/>
+    </LinearGradientBrush>
+
+</ResourceDictionary>

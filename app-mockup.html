@@ -1,0 +1,342 @@
+<title>Ronin Vitals — live design mockup</title>
+<style>
+  /* ════════════════════════════════════════════════════════════════
+     These custom properties map 1:1 to Resources/Colors.xaml keys.
+     Edit values here (DevTools > Elements > :root, or just edit this
+     file directly) and the whole mockup updates live. When you're
+     happy, tell Claude the new hex/px values (or hand back this file)
+     and they get ported into the real XAML.
+     ════════════════════════════════════════════════════════════════ */
+  :root {
+    /* Vitals.BgGradientStart.Color / Vitals.Bg.Color */
+    --bg-gradient-start: #420202;
+    --bg: #161212;
+    /* Vitals.Surface*.Color */
+    --surface: #0e0e0e;
+    --surface-2: #171111;
+    --surface-3: #201818;
+    /* Vitals.Border.Color / Vitals.BorderHover.Color */
+    --border: #241c1c;
+    --border-hover: #d0601a;
+    /* Vitals.Teal.Color / TealDeep (primary orange) */
+    --orange: #e06020;
+    --orange-deep: #b04010;
+    /* Vitals.Blue.Color (icon cyan) */
+    --cyan: #00d8f0;
+    /* Vitals.Yellow.Color (warn) / Vitals.Red.Color (bad) / Vitals.Purple.Color (neutral) */
+    --amber: #c8862e;
+    --red: #cc2200;
+    --neutral: #a8a8a8;
+    /* Vitals.Text.Color / Muted / MutedDim */
+    --text: #E6E3E3;
+    --muted: #C2C0C2;
+    --muted-dim: #807E7E;
+    /* Vitals.OnAccent.Color */
+    --on-accent: #2a1200;
+
+    --version: #71DE02;
+
+    /* Vitals.CardShadow (DropShadowEffect: Color=orange, Direction=315,
+       ShadowDepth=3, BlurRadius=16, Opacity=0.4) - approximated in CSS */
+    --card-shadow: -3px 4px 5px rgba(224, 96, 32, 0.4);
+
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(to bottom right,
+      var(--bg-gradient-start) 0%, var(--bg-gradient-start) 8%,
+      var(--bg) 30%, var(--bg) 100%);
+    color: var(--text);
+    font-family: "Segoe UI", -apple-system, system-ui, sans-serif;
+  }
+
+  .legend {
+    font-family: "Consolas", ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+  }
+  .legend b { color: var(--text); }
+
+  .app { max-width: 920px; margin: 0 auto; padding: 0 0 60px; }
+
+  /* ── Topbar / vitals strip ── */
+  .topbar {
+    padding: 18px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(23,17,17,0.6);
+    display: flex;
+    align-items: flex-start;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--orange), var(--orange-deep));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-mark svg { width: 15px; height: 15px; stroke: var(--on-accent); }
+  .brand-name { font-weight: 600; font-size: 15px; white-space: nowrap; }
+  .brand-name span { color: var(--orange); }
+
+  .vitals-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .vital {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--card-shadow);
+    padding: 8px 12px 7px; width: 140px;
+  }
+  .vital-label { font-size: 9.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+  .vital-value { font-family: Consolas, monospace; font-size: 12.5px; margin-top: 2px; }
+  .vital-spark { height: 20px; margin-top: 4px; }
+  .vital-spark.cyan path { stroke: var(--cyan); }
+  .vital-spark.orange path { stroke: var(--orange); }
+  .vital-spark.amber path { stroke: var(--amber); }
+  .vital-spark path { fill: none; stroke-width: 1.6; }
+
+  /* ── Section body ── */
+  .screen { padding: 24px; }
+  .screen-label {
+    font-family: Consolas, monospace; font-size: 10.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted-dim); margin: 36px 0 14px;
+    border-top: 1px dashed var(--border); padding-top: 20px;
+  }
+  .screen:first-of-type .screen-label { display: none; }
+  .back-btn { color: var(--muted); font-size: 13px; font-weight: 500; margin-bottom: 12px; display: inline-block; }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .headline { font-size: 30px; font-weight: 600; text-align: center; margin: 6px 0 18px; }
+
+  /* ── Section tiles (Home) ── */
+  .tile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    padding: 18px 16px;
+  }
+  .tile .icon-wrap {
+    width: 38px; height: 38px; border-radius: 10px; margin-bottom: 14px;
+    background: rgba(0,216,240,0.14);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-wrap svg { width: 18px; height: 18px; stroke: var(--cyan); fill: none; stroke-width: 2; }
+  .tile h3 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .tile p { font-size: 12px; color: var(--muted); margin: 0; }
+
+  .driver-entry {
+    margin-top: 12px; display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--card-shadow);
+    padding: 15px 16px;
+  }
+  .driver-entry .icon-wrap { width: 34px; height: 34px; }
+  .driver-entry h4 { font-size: 13.5px; font-weight: 600; margin: 0 0 2px; }
+  .driver-entry p { font-size: 11.5px; color: var(--muted); margin: 0; }
+
+  /* ── Symptom cards ── */
+  .symptom-list { display: flex; flex-direction: column; gap: 10px; }
+  .symptom-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--card-shadow);
+    padding: 16px;
+  }
+  .symptom-card.expanded {
+    background: var(--surface-2);
+    border-color: var(--orange);
+    box-shadow: none;
+  }
+  .symptom-card h4 { font-size: 14.5px; font-weight: 600; margin: 0 0 4px; }
+  .symptom-card p { font-size: 12px; color: var(--muted); margin: 0; }
+  .symptom-card .inline-back { color: var(--muted); font-size: 11.5px; font-weight: 600; display: block; margin: 14px 0 12px; }
+  .symptom-card .detail-sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .run-btn {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, var(--orange), var(--orange-deep));
+    color: var(--on-accent); font-weight: 600; font-size: 14px; margin-bottom: 14px;
+  }
+  .check-item {
+    display: flex; gap: 11px; align-items: flex-start;
+    background: var(--surface-3); border: 1px solid var(--border); border-radius: 11px;
+    padding: 11px 12px; margin-bottom: 8px;
+  }
+  .check-icon {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+  }
+  .check-icon.pass { background: rgba(224,96,32,0.18); color: var(--orange); }
+  .check-icon.warn { background: rgba(200,134,46,0.18); color: var(--amber); }
+  .check-icon.bad { background: rgba(204,34,0,0.18); color: var(--red); }
+  .check-title { font-size: 13px; font-weight: 500; }
+  .check-result { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Driver rows ── */
+  .vendor-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+  .driver-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 2px solid var(--border); border-radius: 12px;
+    box-shadow: var(--card-shadow);
+    padding: 12px 13px; margin-bottom: 7px;
+  }
+  .driver-row.checked { background: var(--surface-2); border-color: var(--orange); box-shadow: none; }
+  .driver-check {
+    width: 19px; height: 19px; border-radius: 6px; border: 1.5px solid #3a4258;
+    background: var(--surface-3); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  }
+  .driver-row.checked .driver-check { background: var(--orange); border-color: var(--orange); color: var(--on-accent); }
+  .driver-info { flex: 1; }
+  .driver-name { font-size: 13px; }
+  .driver-versions { font-family: Consolas, monospace; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .driver-versions .new { color: var(--version); }
+  .badge { font-size: 9.5px; font-weight: 600; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; background: var(--surface-3); }
+  .badge.wu { color: var(--cyan); }
+  .badge.direct { color: var(--orange); }
+  .badge.manual { color: var(--amber); }
+
+  .sticky-bar {
+    margin-top: 16px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .sticky-bar span { font-size: 12.5px; color: var(--muted); }
+  .update-btn {
+    padding: 10px 18px; border-radius: 9px; border: none;
+    background: linear-gradient(135deg, var(--orange), var(--orange-deep));
+    color: var(--on-accent); font-weight: 600; font-size: 13px;
+  }
+</style>
+
+<div class="legend">
+  <b>Live design reference</b> - not the real app, just the same colors/shadows so you can edit CSS here and report values back.
+  Edit <b>:root</b> custom properties (top of the stylesheet) in DevTools to retheme everything at once.
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2 6 4-14 2 8h6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-name">Ronin <span>Vitals</span></div>
+    </div>
+    <div class="vitals-row">
+      <div class="vital">
+        <div class="vital-label">Network</div><div class="vital-value">3.2 Mb/s</div>
+        <svg class="vital-spark cyan" viewBox="0 0 64 20" preserveAspectRatio="none" width="100%" height="20"><path d="M0,14 10,14 16,6 22,16 30,4 38,16 46,14 64,14"/></svg>
+      </div>
+      <div class="vital">
+        <div class="vital-label">CPU</div><div class="vital-value">27%</div>
+        <svg class="vital-spark orange" viewBox="0 0 64 20" preserveAspectRatio="none" width="100%" height="20"><path d="M0,12 8,10 16,13 24,9 32,12 40,8 48,13 56,10 64,12"/></svg>
+      </div>
+      <div class="vital">
+        <div class="vital-label">RAM</div><div class="vital-value">32%</div>
+        <svg class="vital-spark amber" viewBox="0 0 64 20" preserveAspectRatio="none" width="100%" height="20"><path d="M0,11 64,11"/></svg>
+      </div>
+      <div class="vital">
+        <div class="vital-label">Disk C:</div><div class="vital-value">64% used</div>
+        <svg class="vital-spark" viewBox="0 0 64 20" preserveAspectRatio="none" width="100%" height="20" style="--s:var(--neutral)"><path d="M0,13 64,13" stroke="var(--neutral)"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="eyebrow">RONIN VITALS</div>
+    <div class="headline">What area would you like to check?</div>
+    <div class="tile-grid">
+      <div class="tile">
+        <div class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M5 12.5a11 11 0 0114 0M8 16a6.5 6.5 0 018 0M11.5 19.5h1" stroke-linecap="round"/></svg></div>
+        <h3>Network</h3><p>Connection, speed, and Wi-Fi</p>
+      </div>
+      <div class="tile">
+        <div class="icon-wrap"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M9 20h6M12 16v4" stroke-linecap="round"/></svg></div>
+        <h3>Hardware</h3><p>Performance, heat, and drives</p>
+      </div>
+      <div class="tile">
+        <div class="icon-wrap"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9l-2 3 2 3M15 9l2 3-2 3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3>Software</h3><p>Crashes, updates, and apps</p>
+      </div>
+      <div class="tile">
+        <div class="icon-wrap"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2" stroke-linecap="round"/></svg></div>
+        <h3>System</h3><p>Windows, updates, and settings</p>
+      </div>
+    </div>
+    <div class="driver-entry">
+      <div class="icon-wrap"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><h4>Check for driver updates</h4><p>Scan every driver on your system and update what's safe to update</p></div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="screen-label">Symptoms screen</div>
+    <span class="back-btn">&larr; All symptoms</span>
+    <div class="eyebrow">Hardware</div>
+    <div class="headline">What seems to be the problem?</div>
+    <div class="symptom-list">
+      <div class="symptom-card expanded">
+        <h4>My computer feels slow</h4>
+        <p>Check what might be holding your system back.</p>
+        <span class="inline-back">&larr; Back to options</span>
+        <div class="detail-sub">We'll check 4 things related to this.</div>
+        <button class="run-btn">Run again</button>
+        <div class="check-item">
+          <div class="check-icon pass">&#10003;</div>
+          <div><div class="check-title">Checking CPU load</div><div class="check-result">CPU usage is normal (27%).</div></div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon warn">!</div>
+          <div><div class="check-title">Checking memory usage</div><div class="check-result">RAM usage is high (86%).</div></div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon bad">&times;</div>
+          <div><div class="check-title">Checking startup programs</div><div class="check-result">26 programs are launching automatically at startup.</div></div>
+        </div>
+      </div>
+      <div class="symptom-card">
+        <h4>Fans are loud or it's overheating</h4>
+        <p>Check temperatures and airflow-related issues.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="screen-label">Drivers screen</div>
+    <span class="back-btn">&larr; All areas</span>
+    <div class="eyebrow">Driver Updates</div>
+    <div class="headline">Here's what we found</div>
+    <div class="vendor-label">Windows Update</div>
+    <div class="driver-row checked">
+      <div class="driver-check">&#10003;</div>
+      <div class="driver-info">
+        <div class="driver-name">Realtek High Definition Audio</div>
+        <div class="driver-versions">6.0.9375.1 &rarr; <span class="new">6.0.9412.1</span></div>
+      </div>
+      <div class="badge wu">Windows Update</div>
+    </div>
+    <div class="vendor-label">NVIDIA</div>
+    <div class="driver-row">
+      <div class="driver-check"></div>
+      <div class="driver-info">
+        <div class="driver-name">NVIDIA HD Audio Driver</div>
+        <div class="driver-versions">1.3.42.2 &rarr; <span class="new">1.4.10.1</span></div>
+      </div>
+      <div class="badge direct">Direct</div>
+    </div>
+    <div class="driver-row">
+      <div class="driver-check" style="opacity:.3"></div>
+      <div class="driver-info">
+        <div class="driver-name">GeForce RTX 4070 Graphics Driver</div>
+        <div class="driver-versions">551.23 &rarr; <span class="new">566.14</span></div>
+      </div>
+      <div class="badge manual">Manual</div>
+    </div>
+    <div class="sticky-bar">
+      <span>1 selected</span>
+      <button class="update-btn">Update Selected (1)</button>
+    </div>
+  </div>
+</div>

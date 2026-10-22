@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>RoninVitals</AssemblyName>
+    <RootNamespace>RoninVitals</RootNamespace>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <Authors>Ronin Empire</Authors>
+    <Description>Consumer diagnostic and repair tool for Windows PCs.</Description>
+    <Copyright>Copyright © 2026 Ronin Empire</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\icon.ico" Condition="Exists('Assets\icon.ico')"/>
+    <Resource Include="Assets\icon.png" Condition="Exists('Assets\icon.png')"/>
+    <!-- Space Grotesk (display), Inter (body), IBM Plex Mono (data) - static OFL-licensed
+         weight instances pulled from Google Fonts, not the variable-font originals, since
+         WPF's font stack doesn't reliably address named instances on a variable font's
+         weight axis. See Assets\Fonts\*-OFL.txt for each family's license. -->
+    <Resource Include="Assets\Fonts\*.ttf"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <!-- Read-only WMI access for real diagnostics (drive health via MSFT_PhysicalDisk, etc). -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <!-- Read-only service status checks (Windows Update service, etc). -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+    <!-- Read-only Event Log queries (crash logs, recent system/disk errors). -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
+    <!-- Read-only performance counters (disk activity). -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

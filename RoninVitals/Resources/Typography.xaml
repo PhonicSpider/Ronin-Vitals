@@ -1,0 +1,59 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Prototype spec: Space Grotesk (display) / Inter (body) / IBM Plex Mono (data).
+         Static OFL-licensed weight instances, embedded from Assets/Fonts (Resource build
+         action in the csproj) - not the variable-font originals Google now distributes by
+         default, since WPF's font stack doesn't reliably address a variable font's named
+         weight instances. Space Grotesk's Regular and SemiBold files share one internal
+         family name ("Space Grotesk"), so FontWeight="SemiBold" on a style correctly picks
+         the SemiBold file. Inter's SemiBold file does NOT share a family name with Regular
+         (Google ships it as a fully separate family, "Inter 18pt 18pt SemiBold") - FontWeight
+         alone won't select it, so Vitals.Font.Body.SemiBold below points at it directly;
+         see Vitals.Text.Eyebrow. -->
+    <FontFamily x:Key="Vitals.Font.Display">./Assets/Fonts/#Space Grotesk</FontFamily>
+    <FontFamily x:Key="Vitals.Font.Body">./Assets/Fonts/#Inter 18pt 18pt</FontFamily>
+    <FontFamily x:Key="Vitals.Font.Body.SemiBold">./Assets/Fonts/#Inter 18pt 18pt SemiBold</FontFamily>
+    <FontFamily x:Key="Vitals.Font.Mono">./Assets/Fonts/#IBM Plex Mono</FontFamily>
+
+    <Style x:Key="Vitals.Text.Eyebrow" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Body.SemiBold}"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Vitals.Muted.Brush}"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="Vitals.Text.Headline" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Display}"/>
+        <Setter Property="FontSize" Value="30"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Vitals.Text.Brush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="LineHeight" Value="36"/>
+    </Style>
+
+    <Style x:Key="Vitals.Text.CardTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Display}"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Vitals.Text.Brush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style x:Key="Vitals.Text.Body" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Body}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Foreground" Value="{StaticResource Vitals.Muted.Brush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="LineHeight" Value="18"/>
+    </Style>
+
+    <Style x:Key="Vitals.Text.Mono" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Mono}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Foreground" Value="{StaticResource Vitals.Text.Brush}"/>
+    </Style>
+
+</ResourceDictionary>

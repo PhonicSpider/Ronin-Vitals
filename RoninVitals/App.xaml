@@ -1,0 +1,77 @@
+<Application x:Class="RoninVitals.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Colors.xaml"/>
+                <ResourceDictionary Source="Resources/Typography.xaml"/>
+                <ResourceDictionary Source="Resources/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style TargetType="{x:Type Window}">
+                <Setter Property="Background" Value="{StaticResource Vitals.Bg.Brush}"/>
+                <Setter Property="TextElement.Foreground" Value="{StaticResource Vitals.Text.Brush}"/>
+                <Setter Property="FontFamily" Value="{StaticResource Vitals.Font.Body}"/>
+            </Style>
+
+            <Style TargetType="{x:Type ScrollViewer}">
+                <Setter Property="Background" Value="Transparent"/>
+            </Style>
+
+            <!-- Thin, minimal scrollbar - a bare Track+Thumb, no arrow buttons - replacing the
+                 stock Windows scrollbar chrome to match the rest of the design system. -->
+            <Style TargetType="{x:Type ScrollBar}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Width" Value="10"/>
+                <Setter Property="MinWidth" Value="10"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ScrollBar}">
+                            <Grid Background="{TemplateBinding Background}">
+                                <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/>
+                                    </Track.IncreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource Vitals.ScrollBarThumb}"/>
+                                    </Track.Thumb>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Width" Value="Auto"/>
+                        <Setter Property="Height" Value="10"/>
+                        <Setter Property="MinHeight" Value="10"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                    <Grid Background="{TemplateBinding Background}">
+                                        <Track x:Name="PART_Track" IsDirectionReversed="False">
+                                            <Track.DecreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageLeftCommand" Opacity="0" Focusable="False"/>
+                                            </Track.DecreaseRepeatButton>
+                                            <Track.IncreaseRepeatButton>
+                                                <RepeatButton Command="ScrollBar.PageRightCommand" Opacity="0" Focusable="False"/>
+                                            </Track.IncreaseRepeatButton>
+                                            <Track.Thumb>
+                                                <Thumb Style="{StaticResource Vitals.ScrollBarThumb}"/>
+                                            </Track.Thumb>
+                                        </Track>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
