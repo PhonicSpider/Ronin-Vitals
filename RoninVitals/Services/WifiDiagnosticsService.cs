@@ -8,25 +8,35 @@ namespace RoninVitals.Services;
 
 /// <summary>
 /// Real Wi-Fi checks via `netsh wlan` output parsing (no public .NET API surfaces signal
-/// strength, channel, or nearby-network data) plus WMI for driver age. All read-only - nothing
-/// here changes adapter settings, radio state, or power management.
+/// strength, channel, or nearby-network data) plus WMI for driver age. The checks are all
+/// read-only; the one fix here (<see cref="DisableWirelessPowerSavingAsync"/>) only changes the
+/// active power plan's documented "Wireless Adapter Settings > Power Saving Mode" value, with an undo.
 ///
-/// Wi-Fi power-saving status is deliberately NOT wired here, even as a read-only check. The
-/// registry mechanism for it (a PnPCapabilities bit under the adapter's device-class key) isn't
-/// officially documented, and sources disagree enough on the exact bit meaning that a
-/// "definitely correct" read isn't achievable with confidence - same reasoning as the
-/// CPU-temperature check in SystemDiagnosticsService: a confidently wrong answer is worse than
-/// a placeholder.
+/// Wi-Fi power saving is read from that documented powercfg setting, NOT from the adapter's
+/// PnPCapabilities registry bit, which isn't officially documented and which sources disagree on -
+/// the earlier reason this check was left as a scripted placeholder. powercfg's index values are
+/// documented (0 = Maximum Performance ... 3 = Maximum Power Saving), so a confident read is
+/// possible after all.
 /// </summary>
 public static class WifiDiagnosticsService
 {
     private static readonly Regex ChannelLine = new(@"Channel\s*:\s*(\d+)", RegexOptions.Compiled);
 
-    private static string RunNetsh(string args)
+    // powercfg GUIDs for "Wireless Adapter Settings" and its "Power Saving Mode" setting.
+    private const string WirelessSubgroup = "19cbb8fa-5279-450e-9fac-8a3d5fedd0c1";
+    private const string WirelessPowerSetting = "12bbebe6-58d6-4636-95bb-3217ef867c1a";
+    private static readonly Regex AcIndex = new(@"Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)", RegexOptions.Compiled);
+    private static readonly Regex DcIndex = new(@"Current DC Power Setting Index:\s*0x([0-9a-fA-F]+)", RegexOptions.Compiled);
+    private static readonly string[] PowerModeNames = { "Maximum Performance", "Low Power Saving", "Medium Power Saving", "Maximum Power Saving" };
+
+    /// <summary>The AC/DC values captured right before the fix changed them, so Undo can restore exactly them.</summary>
+    private static (int Ac, int Dc)? _powerIndexesBeforeFix;
+
+    private static (int ExitCode, string Output) RunTool(string fileName, string args)
     {
         var psi = new ProcessStartInfo
         {
-            FileName = "netsh",
+            FileName = fileName,
             Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -34,12 +44,14 @@ public static class WifiDiagnosticsService
         };
 
         using var process = Process.Start(psi);
-        if (process is null) return string.Empty;
+        if (process is null) return (-1, string.Empty);
 
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit(5000);
-        return output;
+        return (process.HasExited ? process.ExitCode : -1, output);
     }
+
+    private static string RunNetsh(string args) => RunTool("netsh", args).Output;
 
     private static Dictionary<string, string> ParseInterfaceInfo(string output)
     {
@@ -59,6 +71,16 @@ public static class WifiDiagnosticsService
     private static bool NoWirelessInterface(string output) =>
         output.Contains("no wireless interface", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Extra raw link details from `netsh wlan show interfaces` (SSID, band, radio type,
+    /// channel, rates) appended to the technician-facing detail line only - never the friendly text.</summary>
+    private static string DescribeLink(Dictionary<string, string> info)
+    {
+        var parts = new List<string>();
+        foreach (var key in new[] { "SSID", "Band", "Radio type", "Channel", "Receive rate (Mbps)", "Transmit rate (Mbps)" })
+            if (info.TryGetValue(key, out var value) && value.Length > 0) parts.Add($"{key} = {value}");
+        return parts.Count == 0 ? string.Empty : ". " + string.Join(", ", parts);
+    }
+
     public static CheckResult CheckSignalStrength()
     {
         const string techCommand = "netsh wlan show interfaces";
@@ -73,7 +95,7 @@ public static class WifiDiagnosticsService
         if (!info.TryGetValue("Signal", out var signalText) || !int.TryParse(signalText.TrimEnd('%'), out var signal))
             return new CheckResult(CheckStatus.Warn, "Couldn't read Wi-Fi signal strength.", techCommand, "No Signal field in netsh output.");
 
-        var techDetail = $"Signal = {signal}%";
+        var techDetail = $"Signal = {signal}%{DescribeLink(info)}";
         return signal switch
         {
             >= 70 => new CheckResult(CheckStatus.Pass, $"Signal is strong ({signal}%).", techCommand, techDetail),
@@ -123,13 +145,26 @@ public static class WifiDiagnosticsService
             return new CheckResult(CheckStatus.Pass, $"You're connected over {connectionType}, not Wi-Fi - channel congestion doesn't apply here.",
                 "Get-NetAdapter | Where-Object Status -eq Up", $"{activeAdapter.Name}: {activeAdapter.NetworkInterfaceType}");
         }
+        return CheckChannelInterference();
+    }
 
+    /// <summary>
+    /// The ungated Wi-Fi channel check, for the "Wi-Fi keeps dropping" card where Wi-Fi is the
+    /// whole subject - gating on the *active* adapter there would wrongly say "doesn't apply"
+    /// for someone whose PC is on Ethernet but whose Wi-Fi still drops. Says so plainly when
+    /// Wi-Fi isn't connected instead of the old misleading "couldn't determine your channel".
+    /// </summary>
+    public static CheckResult CheckChannelInterference()
+    {
         const string techCommand = "netsh wlan show interfaces; netsh wlan show networks mode=bssid";
         var interfaceOutput = RunNetsh("wlan show interfaces");
         if (NoWirelessInterface(interfaceOutput))
             return new CheckResult(CheckStatus.Pass, "No Wi-Fi adapter found on this system - nothing to check here.", techCommand, "No wireless interface present.");
 
         var info = ParseInterfaceInfo(interfaceOutput);
+        if (!info.TryGetValue("State", out var state) || !state.Equals("connected", StringComparison.OrdinalIgnoreCase))
+            return new CheckResult(CheckStatus.Warn, "Not connected to Wi-Fi right now, so there's no channel to check for interference.", techCommand, $"State = {state ?? "(not reported)"}");
+
         if (!info.TryGetValue("Channel", out var channelText) || !int.TryParse(channelText, out var currentChannel))
             return new CheckResult(CheckStatus.Warn, "Couldn't determine which Wi-Fi channel you're on.", techCommand, "No Channel field in netsh output.");
 
@@ -146,40 +181,99 @@ public static class WifiDiagnosticsService
         };
     }
 
+    private static (int Ac, int Dc)? ReadWirelessPowerIndexes(out string raw)
+    {
+        raw = RunTool("powercfg", $"/query SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting}").Output;
+        var ac = AcIndex.Match(raw);
+        var dc = DcIndex.Match(raw);
+        if (!ac.Success || !dc.Success) return null;
+        return (Convert.ToInt32(ac.Groups[1].Value, 16), Convert.ToInt32(dc.Groups[1].Value, 16));
+    }
+
+    private static string PowerModeName(int index) =>
+        index >= 0 && index < PowerModeNames.Length ? PowerModeNames[index] : $"mode {index}";
+
+    public static CheckResult CheckPowerSaving()
+    {
+        var techCommand = $"powercfg /query SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting}";
+        var indexes = ReadWirelessPowerIndexes(out var raw);
+        if (string.IsNullOrWhiteSpace(raw))
+            return new CheckResult(CheckStatus.Warn, "Couldn't read your Wi-Fi power-saving setting.", techCommand, "powercfg returned no output.");
+        if (indexes is null)
+            return new CheckResult(CheckStatus.Pass, "Your power plan has no Wi-Fi power-saving setting - nothing to change here.", techCommand, "No AC/DC power setting index in powercfg output.");
+
+        var (ac, dc) = indexes.Value;
+        var techDetail = $"AC index = {ac} ({PowerModeName(ac)}), DC index = {dc} ({PowerModeName(dc)})";
+        return Math.Max(ac, dc) >= 2
+            ? new CheckResult(CheckStatus.Warn, $"Windows lets your Wi-Fi adapter power down to save energy (plugged in: {PowerModeName(ac)}, on battery: {PowerModeName(dc)}) - that can cause drops.", techCommand, techDetail)
+            : new CheckResult(CheckStatus.Pass, "Windows isn't aggressively powering down your Wi-Fi adapter.", techCommand, techDetail);
+    }
+
+    /// <summary>
+    /// Sets the active power plan's Wi-Fi power-saving mode to Maximum Performance (plugged in and
+    /// on battery), remembering the previous values for <see cref="RestoreWirelessPowerSavingAsync"/>.
+    /// Only changes this one documented power-plan value - no registry editing, no adapter changes.
+    /// </summary>
+    public static async Task<bool> DisableWirelessPowerSavingAsync() => await Task.Run(() =>
+    {
+        _powerIndexesBeforeFix = ReadWirelessPowerIndexes(out _);
+        var a = RunTool("powercfg", $"/setacvalueindex SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting} 0").ExitCode;
+        var d = RunTool("powercfg", $"/setdcvalueindex SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting} 0").ExitCode;
+        var s = RunTool("powercfg", "/setactive SCHEME_CURRENT").ExitCode;
+        return a == 0 && d == 0 && s == 0;
+    });
+
+    public static async Task<bool> RestoreWirelessPowerSavingAsync() => await Task.Run(() =>
+    {
+        if (_powerIndexesBeforeFix is not { } before) return false;
+        var a = RunTool("powercfg", $"/setacvalueindex SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting} {before.Ac}").ExitCode;
+        var d = RunTool("powercfg", $"/setdcvalueindex SCHEME_CURRENT {WirelessSubgroup} {WirelessPowerSetting} {before.Dc}").ExitCode;
+        var s = RunTool("powercfg", "/setactive SCHEME_CURRENT").ExitCode;
+        return a == 0 && d == 0 && s == 0;
+    });
+
+    /// <summary>WQL treats backslash and single quote as escape characters inside string literals.
+    /// PNP device IDs contain backslashes (PCI\VEN_...), which made the driver query invalid and
+    /// this check silently fail before.</summary>
+    private static string EscapeWql(string value) => value.Replace("\\", "\\\\").Replace("'", "\\'");
+
     public static CheckResult CheckDriverStatus()
     {
+        const string techCommand = "Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq <Wi-Fi adapter PNPDeviceID>";
         var interfaceOutput = RunNetsh("wlan show interfaces");
         if (NoWirelessInterface(interfaceOutput))
-            return new CheckResult(CheckStatus.Pass, "No Wi-Fi adapter found on this system - nothing to check here.");
+            return new CheckResult(CheckStatus.Pass, "No Wi-Fi adapter found on this system - nothing to check here.", "netsh wlan show interfaces", "No wireless interface present.");
 
         var info = ParseInterfaceInfo(interfaceOutput);
         if (!info.TryGetValue("Name", out var adapterName))
-            return new CheckResult(CheckStatus.Warn, "Couldn't identify the Wi-Fi adapter to check its driver.");
+            return new CheckResult(CheckStatus.Warn, "Couldn't identify the Wi-Fi adapter to check its driver.", "netsh wlan show interfaces", "No Name field in netsh output.");
 
         try
         {
             using var adapterSearcher = new ManagementObjectSearcher(
-                $"SELECT PNPDeviceID FROM Win32_NetworkAdapter WHERE NetConnectionID = '{adapterName.Replace("'", "''")}'");
+                $"SELECT PNPDeviceID FROM Win32_NetworkAdapter WHERE NetConnectionID = '{EscapeWql(adapterName)}'");
             var pnpDeviceId = adapterSearcher.Get().Cast<ManagementObject>().FirstOrDefault()?["PNPDeviceID"] as string;
             if (pnpDeviceId is null)
-                return new CheckResult(CheckStatus.Warn, "Couldn't look up the Wi-Fi adapter's driver.");
+                return new CheckResult(CheckStatus.Warn, "Couldn't look up the Wi-Fi adapter's driver.", techCommand, $"No Win32_NetworkAdapter match for NetConnectionID '{adapterName}'.");
 
             using var driverSearcher = new ManagementObjectSearcher(
-                $"SELECT DriverDate FROM Win32_PnPSignedDriver WHERE DeviceID = '{pnpDeviceId.Replace("'", "''")}'");
-            var driverDateRaw = driverSearcher.Get().Cast<ManagementObject>().FirstOrDefault()?["DriverDate"] as string;
+                $"SELECT DriverDate, DriverVersion, DriverProviderName FROM Win32_PnPSignedDriver WHERE DeviceID = '{EscapeWql(pnpDeviceId)}'");
+            var driver = driverSearcher.Get().Cast<ManagementObject>().FirstOrDefault();
+            var driverDateRaw = driver?["DriverDate"] as string;
             if (driverDateRaw is null)
-                return new CheckResult(CheckStatus.Warn, "Couldn't read the Wi-Fi driver's date.");
+                return new CheckResult(CheckStatus.Warn, "Couldn't read the Wi-Fi driver's date.", techCommand, $"{adapterName} ({pnpDeviceId}): no DriverDate returned.");
 
             var driverDate = ManagementDateTimeConverter.ToDateTime(driverDateRaw);
             var ageDays = (DateTime.Now - driverDate).TotalDays;
+            var techDetail = $"{adapterName}: provider = {driver?["DriverProviderName"]}, version = {driver?["DriverVersion"]}, date = {driverDate:yyyy-MM-dd} ({ageDays:N0} days old)";
 
             return ageDays < 730
-                ? new CheckResult(CheckStatus.Pass, $"Driver is from {driverDate:MMMM yyyy} - reasonably current.")
-                : new CheckResult(CheckStatus.Warn, $"Driver hasn't been updated since {driverDate:MMMM yyyy} - a newer one may fix stability issues.");
+                ? new CheckResult(CheckStatus.Pass, $"Driver is from {driverDate:MMMM yyyy} - reasonably current.", techCommand, techDetail)
+                : new CheckResult(CheckStatus.Warn, $"Driver hasn't been updated since {driverDate:MMMM yyyy} - a newer one may fix stability issues.", techCommand, techDetail);
         }
-        catch (ManagementException)
+        catch (ManagementException ex)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't read the Wi-Fi driver's date on this system.");
+            return new CheckResult(CheckStatus.Warn, "Couldn't read the Wi-Fi driver's date on this system.", techCommand, $"ManagementException: {ex.Message}");
         }
     }
 }

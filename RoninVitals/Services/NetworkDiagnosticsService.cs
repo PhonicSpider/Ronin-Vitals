@@ -26,8 +26,22 @@ public static class NetworkDiagnosticsService
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.OperationalStatus == OperationalStatus.Up
                         && n.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
-            .OrderByDescending(n => n.Speed)
+            .OrderByDescending(HasIPv4Gateway)
+            .ThenBy(IsVirtualAdapter)
+            .ThenByDescending(n => n.Speed)
             .FirstOrDefault();
+
+    // "Carrying traffic" means having a default route out. Speed alone is a bad proxy: a Hyper-V
+    // virtual switch reports 10 Gbps with no gateway and used to win over the real 1 Gbps NIC.
+    private static bool HasIPv4Gateway(NetworkInterface n) =>
+        n.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork
+                                                       && !g.Address.Equals(IPAddress.Any));
+
+    // Ranks virtual/host-only adapters below real ones when no adapter has a gateway (e.g. DHCP
+    // failed), so the diagnosis is about the real NIC rather than a vSwitch or Wi-Fi Direct adapter.
+    private static bool IsVirtualAdapter(NetworkInterface n) =>
+        new[] { "Virtual", "Hyper-V", "VMware", "VirtualBox", "Bluetooth", "TAP-Windows" }
+            .Any(k => n.Description.Contains(k, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// `netsh interface show interface` reports Admin State (Enabled/Disabled - was it turned
@@ -389,6 +403,58 @@ public static class NetworkDiagnosticsService
             < 150 => new CheckResult(CheckStatus.Warn, $"Latency rises under load ({baseline} ms idle → {underLoad} ms while downloading) - this can make video calls or games choppy when your connection is busy.", techCommand, techDetail),
             _ => new CheckResult(CheckStatus.Bad, $"Latency spikes heavily under load ({baseline} ms idle → {underLoad} ms while downloading) - a classic sign of bufferbloat.", techCommand, techDetail),
         };
+    }
+
+    /// <summary>
+    /// Pings the router and a public host the same number of times and compares the loss, to
+    /// tell "your PC can't hold a steady link to the router" (Wi-Fi signal, router, adapter)
+    /// apart from "the router's fine but the connection beyond it is dropping" (modem, ISP) -
+    /// the single most useful question for an intermittent-drop complaint, with different fixes.
+    /// </summary>
+    public static CheckResult CheckLinkStability()
+    {
+        const int samples = 10;
+        var adapter = GetActiveAdapter();
+        var gateway = adapter?.GetIPProperties().GatewayAddresses
+            .Select(g => g.Address)
+            .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)?.ToString();
+
+        if (gateway is null)
+            return new CheckResult(CheckStatus.Warn, "Couldn't find your router to test how steady the connection to it is.",
+                "Get-NetRoute -DestinationPrefix '0.0.0.0/0'", "No gateway address found on the active adapter.");
+
+        List<long?> Sample(string host)
+        {
+            var results = new List<long?>();
+            for (var i = 0; i < samples; i++)
+            {
+                results.Add(MeasurePingMs(host, timeoutMs: 800));
+                Thread.Sleep(100);
+            }
+            return results;
+        }
+
+        var toRouter = Sample(gateway);
+        var toInternet = Sample(ProbeHost);
+        var routerLost = toRouter.Count(r => r is null);
+        var internetLost = toInternet.Count(r => r is null);
+        var routerMax = toRouter.Where(r => r is not null).Select(r => r!.Value).DefaultIfEmpty(0).Max();
+
+        var techCommand = $"Test-Connection {gateway} -Count {samples}; Test-Connection {ProbeHost} -Count {samples}";
+        var techDetail = $"Router {gateway}: {samples - routerLost}/{samples} replies, RTTs (ms): {string.Join(", ", toRouter.Select(r => r?.ToString() ?? "lost"))}. " +
+                         $"{ProbeHost}: {samples - internetLost}/{samples} replies, RTTs (ms): {string.Join(", ", toInternet.Select(r => r?.ToString() ?? "lost"))}.";
+
+        if (routerLost > 0)
+            return new CheckResult(routerLost >= 2 ? CheckStatus.Bad : CheckStatus.Warn,
+                $"Lost {routerLost} of {samples} test packets just reaching your router - the drops are between your PC and the router, not your internet provider.", techCommand, techDetail);
+        if (internetLost > 0)
+            return new CheckResult(internetLost >= 2 ? CheckStatus.Bad : CheckStatus.Warn,
+                $"Your router answered every test, but {internetLost} of {samples} packets to the internet were lost - the drops are beyond your router (modem or internet provider).", techCommand, techDetail);
+        if (routerMax > 100)
+            return new CheckResult(CheckStatus.Warn,
+                $"No packets were lost, but replies from your router spiked up to {routerMax} ms - the link to it isn't steady.", techCommand, techDetail);
+
+        return new CheckResult(CheckStatus.Pass, $"All {samples} test packets reached both your router and the internet - the connection held steady.", techCommand, techDetail);
     }
 
     private static long? AveragePingMs(string host, int samples)

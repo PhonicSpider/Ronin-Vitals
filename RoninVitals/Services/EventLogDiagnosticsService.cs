@@ -40,6 +40,42 @@ public static class EventLogDiagnosticsService
         }
     }
 
+    /// <summary>
+    /// Direct evidence of Wi-Fi drops: Windows logs every disconnect (event 8003) and failed
+    /// connection attempt (8002) to the WLAN AutoConfig operational log. Counts the last 24h. A
+    /// disconnect is also logged when the PC sleeps or the user switches networks, so a count of
+    /// 1-3 is only a Warn and the wording says so rather than claiming the Wi-Fi is faulty.
+    /// </summary>
+    public static CheckResult CheckWifiDisconnects()
+    {
+        const string log = "Microsoft-Windows-WLAN-AutoConfig/Operational";
+        const string techCommand = "Get-WinEvent -LogName 'Microsoft-Windows-WLAN-AutoConfig/Operational' | Where-Object Id -in 8002,8003";
+        try
+        {
+            var disconnects = CountEvents(log, "*[System[(EventID=8003) and TimeCreated[timediff(@SystemTime) <= 86400000]]]");
+            var failures = CountEvents(log, "*[System[(EventID=8002) and TimeCreated[timediff(@SystemTime) <= 86400000]]]");
+            var techDetail = $"Last 24h: {disconnects} disconnect event(s) (ID 8003), {failures} failed connection attempt(s) (ID 8002).";
+
+            if (disconnects + failures == 0)
+                return new CheckResult(CheckStatus.Pass, "Windows hasn't logged any Wi-Fi disconnects in the last 24 hours.", techCommand, techDetail);
+            if (disconnects + failures <= 3)
+                return new CheckResult(CheckStatus.Warn, $"Windows logged {disconnects + failures} Wi-Fi disconnect or failed-connection event{(disconnects + failures == 1 ? "" : "s")} in the last 24 hours - sleeping or switching networks also does this, so it may be normal.", techCommand, techDetail);
+            return new CheckResult(CheckStatus.Bad, $"Windows logged {disconnects + failures} Wi-Fi disconnects or failed connections in the last 24 hours - your Wi-Fi really is dropping.", techCommand, techDetail);
+        }
+        catch (EventLogNotFoundException)
+        {
+            return new CheckResult(CheckStatus.Pass, "No Wi-Fi connection history is recorded on this PC - nothing to check here.", techCommand, $"Log '{log}' not found.");
+        }
+        catch (EventLogException ex)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read your Wi-Fi connection history.", techCommand, $"EventLogException: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read your Wi-Fi connection history (access denied).", techCommand, "UnauthorizedAccessException.");
+        }
+    }
+
     public static CheckResult CheckRecentCrashes() => SafeCount(
         "Application",
         "*[System[Provider[@Name='Application Error'] and TimeCreated[timediff(@SystemTime) <= 86400000]]]",
