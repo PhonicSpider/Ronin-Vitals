@@ -444,17 +444,22 @@ public static class NetworkDiagnosticsService
         var techDetail = $"Router {gateway}: {samples - routerLost}/{samples} replies, RTTs (ms): {string.Join(", ", toRouter.Select(r => r?.ToString() ?? "lost"))}. " +
                          $"{ProbeHost}: {samples - internetLost}/{samples} replies, RTTs (ms): {string.Join(", ", toInternet.Select(r => r?.ToString() ?? "lost"))}.";
 
-        if (routerLost > 0)
-            return new CheckResult(routerLost >= 2 ? CheckStatus.Bad : CheckStatus.Warn,
+        // A single lost ping in 10 is ordinary noise (ICMP is rate-limited and deprioritized by many
+        // routers and hosts), so one stray loss passes; two or more is a real pattern. Verified live:
+        // flagging 1 of 10 as "your internet is dropping" cried wolf on a healthy wired connection.
+        if (routerLost >= 2)
+            return new CheckResult(routerLost >= 4 ? CheckStatus.Bad : CheckStatus.Warn,
                 $"Lost {routerLost} of {samples} test packets just reaching your router - the drops are between your PC and the router, not your internet provider.", techCommand, techDetail);
-        if (internetLost > 0)
-            return new CheckResult(internetLost >= 2 ? CheckStatus.Bad : CheckStatus.Warn,
-                $"Your router answered every test, but {internetLost} of {samples} packets to the internet were lost - the drops are beyond your router (modem or internet provider).", techCommand, techDetail);
+        if (internetLost >= 2)
+            return new CheckResult(internetLost >= 4 ? CheckStatus.Bad : CheckStatus.Warn,
+                $"Your router answered the tests, but {internetLost} of {samples} packets to the internet were lost - the drops are beyond your router (modem or internet provider).", techCommand, techDetail);
         if (routerMax > 100)
             return new CheckResult(CheckStatus.Warn,
                 $"No packets were lost, but replies from your router spiked up to {routerMax} ms - the link to it isn't steady.", techCommand, techDetail);
 
-        return new CheckResult(CheckStatus.Pass, $"All {samples} test packets reached both your router and the internet - the connection held steady.", techCommand, techDetail);
+        return routerLost + internetLost == 0
+            ? new CheckResult(CheckStatus.Pass, $"All {samples} test packets reached both your router and the internet - the connection held steady.", techCommand, techDetail)
+            : new CheckResult(CheckStatus.Pass, $"Nearly every test packet got through (only {routerLost + internetLost} of {samples * 2} lost, which is normal) - the connection held steady.", techCommand, techDetail);
     }
 
     private static long? AveragePingMs(string host, int samples)

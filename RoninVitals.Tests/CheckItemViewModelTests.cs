@@ -96,6 +96,19 @@ public class CheckItemViewModelTests
         Assert.False(vm.FixApplied);
     }
 
+    [Fact]
+    public void Reset_ClearsGuidanceTextOpenedOnAPreviousRun()
+    {
+        // Regression: tips opened via an informational fix button stayed on screen after "Run again".
+        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Warn, fixLabel: "Show tips"));
+        vm.FixMessage = "Some advice shown after clicking the fix button.";
+
+        vm.Reset();
+
+        Assert.Equal(string.Empty, vm.FixMessage);
+        Assert.False(vm.HasFixMessage);
+    }
+
     // ── ApplyFix (cosmetic path only - the real-fix path routes through
     // SafeFixService -> ActionLogService, which needs a live WPF Application
     // (Application.Current.Dispatcher) that a headless test host doesn't have.

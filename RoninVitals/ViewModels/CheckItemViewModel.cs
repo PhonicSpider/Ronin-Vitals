@@ -52,6 +52,7 @@ public partial class CheckItemViewModel : ObservableObject
         ResultText = string.Empty;
         ShowResult = false;
         FixApplied = false;
+        FixMessage = string.Empty; // otherwise guidance opened on a previous run stays showing after "Run again"
     }
 
     public async Task CompleteAsync()
