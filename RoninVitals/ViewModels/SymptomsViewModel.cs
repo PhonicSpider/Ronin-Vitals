@@ -15,12 +15,14 @@ public partial class SymptomsViewModel : ObservableObject
         _navigateHome = navigateHome;
         var section = VitalsCatalog.GetSection(sectionKey);
         SectionLabel = section.Label.ToUpperInvariant();
+        Headline = section.Headline;
 
         Cards = new ObservableCollection<SymptomCardViewModel>(
             section.Symptoms.Select(s => new SymptomCardViewModel(s, ExpandCard, CollapseExpanded)));
     }
 
     public string SectionLabel { get; }
+    public string Headline { get; }
     public ObservableCollection<SymptomCardViewModel> Cards { get; }
 
     [ObservableProperty] private SymptomCardViewModel? _expandedCard;

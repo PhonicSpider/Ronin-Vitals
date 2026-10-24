@@ -28,9 +28,22 @@ Flip **Tech Mode** on and the checklist slides left while a **Technician Console
 
 The checklist on the left stays exactly as a normal user would see it. Tech Mode only adds, it never changes what the regular view says.
 
+### Scan suspicious files
+
+A separate card at the bottom of the home screen opens a scan screen with three options: scan with **Microsoft Defender**, run **Vitals' own file check**, or **both**.
+
+![The three scan options](docs/screenshots/scan-options.png)
+
+- **Microsoft Defender** checks that Defender is on, that its virus definitions are current (with a one-click "update now"), and runs its quick scan. Vitals drives Defender rather than pretending to be an antivirus. If you use another antivirus such as ESET, Norton or McAfee, Windows keeps Defender off on purpose, and Vitals says so and points you to that program instead of raising a false alarm.
+- **Vitals' own file check** looks for things worth a second look: programs disguised as documents (`invoice.pdf.exe`, or names that use a hidden right-to-left character), recent unsigned programs in Downloads, Desktop and Temp, and startup entries that launch from Temp or Downloads. It reports "worth a look", never "this is malware", because it cannot tell the difference.
+
+Neither option deletes or moves anything. Defender handles what it is sure about by its own normal policy.
+
+![Both scans with Tech Mode on, on a PC that uses ESET](docs/screenshots/scan-suspicious-files.png)
+
 ## What works today
 
-Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. The cards are being reviewed one at a time, and three are finished.
+Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. The cards are being reviewed one at a time, and three are finished. The separate **Scan suspicious files** screen is also finished: all of its checks are real. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
 
 **Placeholder checks do not look at your PC.** A check that is not yet real shows a fixed example result, so it can say something that is not true of your machine. Treat those as demo content. They are listed below so you can tell them apart.
 
@@ -68,7 +81,7 @@ Some things the checks do that go beyond a simple "is it on":
 This tool is meant to be safe to run on a machine you care about.
 
 - **Checks only read.** Registry reads, WMI queries, event log reads, pings and DNS lookups. They do not change settings.
-- **Fixes are few, small and reversible.** Today: flush the DNS cache, renew the IP address, clear temporary files, and turn off Wi-Fi power saving. The last one remembers your previous values and has an **Undo** button.
+- **Fixes are few, small and reversible.** Today: flush the DNS cache, renew the IP address, clear temporary files, update Microsoft Defender's virus definitions, and turn off Wi-Fi power saving. The last one remembers your previous values and has an **Undo** button.
 - **Fixes go through one gate.** Each fix has a safety tier. A fix marked as needing confirmation must create a System Restore point first and refuses to run if it cannot. None of today's four needs one, but the gate is built and was tested with a standalone "Create a safety checkpoint" button on the home screen.
 - **Everything is logged.** Applied fixes appear in an on-screen action log in plain language, with undo while it is still available.
 - **Tech Mode is the exception.** The console is a real PowerShell session. It bypasses the fix gate, creates no restore point and cannot be undone. It is off by default and meant for someone who knows what they are typing.
