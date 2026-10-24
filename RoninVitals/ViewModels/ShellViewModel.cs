@@ -41,9 +41,11 @@ public partial class ShellViewModel : ObservableObject
         _allVitals.AddRange(drives);
 
         _vitalsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        UptimeText = _metrics.SampleUptimeText();
         _vitalsTimer.Tick += (_, _) =>
         {
             foreach (var vital in _allVitals) vital.Sample();
+            UptimeText = _metrics.SampleUptimeText();
         };
         _vitalsTimer.Start();
 
@@ -62,6 +64,10 @@ public partial class ShellViewModel : ObservableObject
 
     [ObservableProperty] private object _currentView;
     [ObservableProperty] private bool _hasLogEntries;
+
+    /// <summary>System uptime as "Days:Hours:Minutes", shown as floating text in the top bar (not a
+    /// vitals tile - it has no gauge). Refreshed on the same timer as the vitals; only changes once a minute.</summary>
+    [ObservableProperty] private string _uptimeText = string.Empty;
 
     [RelayCommand]
     private async Task UndoEntry(ActionLogEntry entry) => await entry.UndoAsync();

@@ -129,6 +129,16 @@ public sealed class SystemMetricsService
         return new VitalSample(gauge, $"{mbps:0.0} Mb/s");
     }
 
+    /// <summary>"Days:Hours:Minutes", zero-padded (e.g. 21 days, 10 hours, 52 minutes is
+    /// "21:10:52"). Seconds are deliberately dropped so the readout changes once a minute.</summary>
+    public static string FormatUptime(TimeSpan uptime) =>
+        $"{(int)uptime.TotalDays:00}:{uptime.Hours:00}:{uptime.Minutes:00}";
+
+    /// <summary>Time since Windows last started, from the system tick counter (the same source Task
+    /// Manager's "Up time" uses). With Fast Startup on, "Shut down" does not reset it - only a
+    /// restart does - which matches what Task Manager shows.</summary>
+    public string SampleUptimeText() => FormatUptime(TimeSpan.FromMilliseconds(Environment.TickCount64));
+
     public IReadOnlyList<string> GetFixedDriveNames() =>
         DriveInfo.GetDrives()
             .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
