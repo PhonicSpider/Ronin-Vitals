@@ -236,7 +236,65 @@ public static class VitalsCatalog
                 },
             }
         },
+        // Reached from its own card at the bottom of the home screen, not one of the four area tiles.
+        // Two options: Windows' own antivirus (a real engine, the trustworthy verdict) and Vitals' own
+        // look for suspicious-looking files (finds things worth a second look, never claims a verdict).
+        new Section
+        {
+            Key = SectionKey.Security,
+            Label = "Scan suspicious files",
+            Description = "Look for malware and risky files",
+            Headline = "How would you like to scan?",
+            AccentBrushKey = "Vitals.Purple.Brush",
+            AccentDimBrushKey = "Vitals.Purple.Brush",
+            Symptoms = WithRunBoth(new List<Symptom>
+            {
+                new Symptom
+                {
+                    Id = "defender", Title = "Scan with Microsoft Defender",
+                    Subtitle = "Use Windows' built-in antivirus to scan the places malware usually hides.",
+                    Checks = new List<CheckDefinition>
+                    {
+                        new() { Label = "Checking Microsoft Defender is on", ScriptedStatus = CheckStatus.Pass, ResultText = "Microsoft Defender is on and watching in real time.", FixLabel = "See how to turn it on", RealCheck = SecurityScanService.CheckDefenderStatus,
+                            FixInfoText = "Open Windows Security (press the Windows key, type \"Windows Security\"), choose Virus & threat protection, and turn on Real-time protection. If you use another antivirus (Norton, McAfee, Bitdefender and so on), Defender stays off or in standby on purpose - that's normal, and you should run that program's scan instead. If Defender won't turn on and you don't have another antivirus, a technician should look, since malware sometimes switches it off." },
+                        new() { Label = "Checking virus definitions are current", ScriptedStatus = CheckStatus.Pass, ResultText = "Defender's virus definitions were updated today.", FixLabel = "Update virus definitions", RealCheck = SecurityScanService.CheckDefenderDefinitions, Tier = FixTier.SafeAutoFix, ApplyFix = SecurityScanService.UpdateDefenderDefinitionsAsync },
+                        new() { Label = "Running a Defender quick scan (a few minutes)", ScriptedStatus = CheckStatus.Pass, ResultText = "Defender's quick scan finished and found nothing.", FixLabel = "See what to do next", RealCheck = SecurityScanService.CheckDefenderQuickScan,
+                            FixInfoText = "If you use another antivirus (ESET, Norton, McAfee, Bitdefender and so on), Windows keeps Defender off on purpose and Vitals can't start that program's scan - open it and run a scan from there. If Defender did find something, it has already dealt with what it was sure about - it quarantines or removes threats automatically, and Vitals never deletes anything itself. To see exactly what it did, open Windows Security > Virus & threat protection > Protection history, and approve any item still waiting for you. If the same threat keeps coming back, or you can't tell what it was, have a technician look. If it might have been a password stealer, change your important passwords from a different, clean device." },
+                    }
+                },
+                new Symptom
+                {
+                    Id = "vitalsfiles", Title = "Check for suspicious-looking files",
+                    Subtitle = "Vitals looks through Downloads, Desktop, Temp and startup for disguised or unsigned programs.",
+                    Checks = new List<CheckDefinition>
+                    {
+                        new() { Label = "Looking for programs disguised as documents", ScriptedStatus = CheckStatus.Pass, ResultText = "No programs pretending to be documents or pictures.", FixLabel = "See what to do", RealCheck = SuspiciousFileService.CheckDisguisedFiles,
+                            FixInfoText = "A file named like invoice.pdf.exe is a program dressed up as a document - Windows hides the real ending by default, so it looks harmless. Don't open it. If you don't know where it came from, the safest move is to delete it, then run the Microsoft Defender scan. If you did open one, disconnect from the internet and have a technician check the PC. To see real file endings yourself: in File Explorer choose View > Show > File name extensions." },
+                        new() { Label = "Checking recent downloads for unsigned programs", ScriptedStatus = CheckStatus.Pass, ResultText = "Every recent program has a valid digital signature.", FixLabel = "What does unsigned mean?", RealCheck = SuspiciousFileService.CheckUnsignedPrograms,
+                            FixInfoText = "A digital signature proves who made a program and that it hasn't been changed since. Unsigned doesn't mean unsafe - hobby tools, older programs and many game mods aren't signed - but malware is almost never signed by a trusted company. For each one listed, ask: do I know where I got this? If not, don't run it. For a closer look, a technician can paste its SHA-256 (shown in Tech Mode) into a reputation site such as virustotal.com, which compares it against dozens of antivirus engines without uploading the file." },
+                        new() { Label = "Checking what starts with Windows", ScriptedStatus = CheckStatus.Pass, ResultText = "Nothing starts from an unusual folder.", FixLabel = "See what to do", RealCheck = SuspiciousFileService.CheckStartupEntries,
+                            FixInfoText = "Real software installs into Program Files and starts from there. Something set to launch with Windows from a Temp or Downloads folder is a common malware pattern: it dropped itself there and registered to survive a restart. Open Task Manager (Ctrl+Shift+Esc), go to the Startup apps tab, and turn off anything you don't recognise. Then run the Microsoft Defender scan. If an entry keeps coming back, a technician should look." },
+                    }
+                },
+            })
+        },
     };
+
+    /// <summary>
+    /// Appends a "run both scans" option made from the first two symptoms' own checks, so it can never
+    /// drift out of sync with them. Defender goes first because its verdict matters most; Vitals' own
+    /// check then covers the suspicious-looking files Defender may not flag.
+    /// </summary>
+    private static List<Symptom> WithRunBoth(List<Symptom> scans)
+    {
+        scans.Add(new Symptom
+        {
+            Id = "scanboth", Title = "Run both scans",
+            Subtitle = "Microsoft Defender first, then Vitals' own check, one after the other.",
+            Checks = scans.SelectMany(s => s.Checks).ToList(),
+        });
+        return scans;
+    }
 
     public static Section GetSection(SectionKey key) => Sections.First(s => s.Key == key);
 

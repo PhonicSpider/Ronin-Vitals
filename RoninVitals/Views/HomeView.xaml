@@ -184,6 +184,34 @@
                 </StackPanel>
             </Grid>
         </Button>
+
+        <Button Style="{StaticResource SectionTile}" Margin="0,12,0,0" HorizontalContentAlignment="Stretch"
+                Command="{Binding OpenSectionCommand}" CommandParameter="{x:Static models:SectionKey.Security}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource IconWrap}" Width="34" Height="34" Background="{StaticResource Vitals.BlueDim.Brush}" Margin="0,0,14,0">
+                    <Viewbox Width="17" Height="17">
+                        <Canvas Width="24" Height="24">
+                            <!-- magnifier with an exclamation mark inside -->
+                            <Ellipse Canvas.Left="4" Canvas.Top="4" Width="12" Height="12"
+                                     Stroke="{StaticResource Vitals.Blue.Brush}" StrokeThickness="1.8"/>
+                            <Path Data="M14.5,14.5 L20,20 M10,7.5 L10,10.8 M10,12.6 L10,12.7"
+                                  Stroke="{StaticResource Vitals.Blue.Brush}" StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Canvas>
+                    </Viewbox>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Scan suspicious files" FontFamily="{StaticResource Vitals.Font.Display}"
+                               FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Vitals.Text.Brush}"/>
+                    <TextBlock Text="Look for malware and for disguised or risky files - with Windows Defender, Vitals' own check, or both together"
+                               Style="{StaticResource Vitals.Text.Body}" FontSize="11.5" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Button>
     </StackPanel>
     </ScrollViewer>
 </UserControl>

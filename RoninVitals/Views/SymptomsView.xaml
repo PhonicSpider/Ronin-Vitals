@@ -48,7 +48,7 @@
         <StackPanel Width="500" HorizontalAlignment="Center">
             <Button Content="{Binding BackLabel}" Command="{Binding BackCommand}" Style="{StaticResource Vitals.BackButton}"/>
             <TextBlock Text="{Binding SectionLabel}" Style="{StaticResource Vitals.Text.Eyebrow}" Margin="0,10,0,6"/>
-            <TextBlock Text="What seems to be the problem?" Style="{StaticResource Vitals.Text.Headline}" Margin="0,0,0,20"/>
+            <TextBlock Text="{Binding Headline}" Style="{StaticResource Vitals.Text.Headline}" Margin="0,0,0,20"/>
         </StackPanel>
 
         <!-- Tech Mode split: the console is a true sibling box next to the cards column, not
