@@ -43,7 +43,7 @@ Neither option deletes or moves anything. Defender handles what it is sure about
 
 ## What works today
 
-Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. The cards are being reviewed one at a time, and three are finished. The separate **Scan suspicious files** screen is also finished: all of its checks are real. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
+Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. The cards are being reviewed one at a time, and four are finished (all of Network). The separate **Scan suspicious files** screen is also finished: all of its checks are real. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
 
 **Placeholder checks do not look at your PC.** A check that is not yet real shows a fixed example result, so it can say something that is not true of your machine. Treat those as demo content. They are listed below so you can tell them apart.
 
@@ -52,7 +52,7 @@ Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **Syst
 | Network: My internet feels slow | **Finished.** All 8 checks are real. |
 | Network: I can't get online at all | **Finished.** All 5 checks are real. |
 | Network: Wi-Fi keeps dropping | **Finished.** All 6 checks are real. |
-| Network: A website or game won't load | 3 real checks, 1 placeholder (browser cache). Next in line. |
+| Network: A website or game won't load | **Finished.** All 7 checks are real. |
 | Hardware: My computer feels slow | All real (CPU, memory, disk activity, startup programs, fragmentation). Not yet reviewed for missing causes. |
 | Hardware: A drive might be failing | All real (drive health, free space, disk errors). Not yet reviewed. |
 | Hardware: Not sure - check everything | 3 real, 1 placeholder (temperatures). |
@@ -75,13 +75,14 @@ Some things the checks do that go beyond a simple "is it on":
 - Read the Windows Wi-Fi event log for real disconnects instead of guessing.
 - Notice when you are on Ethernet and skip Wi-Fi checks that do not apply.
 - Measure whether your connection falls apart under load (bufferbloat) with a short background download.
+- Answer "is it me or them?" for a site that won't load: try about ten popular sites and game services at once (Steam, Epic, Xbox, Discord and others), compare your DNS against a public one, spot a "sign in to this Wi-Fi" page, and check the system clock, the proxy, the hosts file and firewall rules for something quietly blocking just some sites.
 
 ## Safety
 
 This tool is meant to be safe to run on a machine you care about.
 
 - **Checks only read.** Registry reads, WMI queries, event log reads, pings and DNS lookups. They do not change settings.
-- **Fixes are few, small and reversible.** Today: flush the DNS cache, renew the IP address, clear temporary files, update Microsoft Defender's virus definitions, and turn off Wi-Fi power saving. The last one remembers your previous values and has an **Undo** button.
+- **Fixes are few, small and reversible.** Today: flush the DNS cache, renew the IP address, clear temporary files, update Microsoft Defender's virus definitions, re-sync the system clock, clear browser caches (never passwords, cookies or history, and only when the browser is closed), and turn off Wi-Fi power saving. The last one remembers your previous values and has an **Undo** button.
 - **Fixes go through one gate.** Each fix has a safety tier. A fix marked as needing confirmation must create a System Restore point first and refuses to run if it cannot. None of today's four needs one, but the gate is built and was tested with a standalone "Create a safety checkpoint" button on the home screen.
 - **Everything is logged.** Applied fixes appear in an on-screen action log in plain language, with undo while it is still available.
 - **Tech Mode is the exception.** The console is a real PowerShell session. It bypasses the fix gate, creates no restore point and cannot be undone. It is off by default and meant for someone who knows what they are typing.

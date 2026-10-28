@@ -19,41 +19,6 @@ public static class SecurityScanService
     private static readonly TimeSpan ScanTimeout = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan UpdateTimeout = TimeSpan.FromMinutes(5);
 
-    private sealed record ToolResult(int ExitCode, string Output, string Error, bool TimedOut);
-
-    private static ToolResult RunPowerShell(string script, TimeSpan timeout)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-NonInteractive");
-        psi.ArgumentList.Add("-ExecutionPolicy");
-        psi.ArgumentList.Add("Bypass");
-        psi.ArgumentList.Add("-Command");
-        psi.ArgumentList.Add("[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='Stop'; " + script);
-
-        using var process = Process.Start(psi);
-        if (process is null) return new ToolResult(-1, string.Empty, "powershell.exe didn't start.", false);
-
-        // Read both streams while waiting, otherwise a full pipe buffer can deadlock the child.
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-        {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { /* already gone */ }
-            return new ToolResult(-1, string.Empty, "Timed out.", true);
-        }
-        return new ToolResult(process.ExitCode, stdout.Result.Trim(), stderr.Result.Trim(), false);
-    }
-
     private sealed record DefenderStatus(bool ServiceEnabled, bool AntivirusEnabled, bool RealTimeEnabled, string RunningMode, int SignatureAgeDays);
 
     private const string StatusCommand =
@@ -61,7 +26,7 @@ public static class SecurityScanService
 
     private static DefenderStatus? ReadStatus(out string detail)
     {
-        var result = RunPowerShell(StatusCommand, TimeSpan.FromSeconds(30));
+        var result = PowerShellRunner.Run(StatusCommand, TimeSpan.FromSeconds(30));
         if (result.ExitCode != 0 || result.Output.Length == 0)
         {
             detail = result.TimedOut ? "Timed out reading Defender status." : $"Get-MpComputerStatus failed: {FirstLine(result.Error)}";
@@ -185,7 +150,7 @@ public static class SecurityScanService
 
     /// <summary>SafeAutoFix - asks Defender to download Microsoft's latest definitions (Update-MpSignature).</summary>
     public static async Task<bool> UpdateDefenderDefinitionsAsync() =>
-        await Task.Run(() => RunPowerShell("Update-MpSignature", UpdateTimeout).ExitCode == 0);
+        await Task.Run(() => PowerShellRunner.Run("Update-MpSignature", UpdateTimeout).ExitCode == 0);
 
     // ── The scan itself ─────────────────────────────────────────────────────────────────────────
 
@@ -208,7 +173,7 @@ public static class SecurityScanService
         // Millisecond-free ISO text: PowerShell's [datetime] cast parses it the same way in every culture.
         var started = DateTime.Now;
         var clock = Stopwatch.StartNew();
-        var scan = RunPowerShell("Start-MpScan -ScanType QuickScan", ScanTimeout);
+        var scan = PowerShellRunner.Run("Start-MpScan -ScanType QuickScan", ScanTimeout);
         clock.Stop();
 
         if (scan.TimedOut)
@@ -218,7 +183,7 @@ public static class SecurityScanService
 
         var duration = $"{(int)clock.Elapsed.TotalMinutes}m {clock.Elapsed.Seconds}s";
         var iso = started.AddSeconds(-2).ToString("yyyy-MM-ddTHH:mm:ss");
-        var query = RunPowerShell(
+        var query = PowerShellRunner.Run(
             $"$s=[datetime]'{iso}'; $names=@{{}}; Get-MpThreat | ForEach-Object {{ $names[$_.ThreatID]=$_.ThreatName }}; " +
             "@(Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -ge $s } | ForEach-Object { [pscustomobject]@{ Name=$names[$_.ThreatID]; Resources=($_.Resources -join '; ') } }) | ConvertTo-Json -Compress",
             TimeSpan.FromSeconds(60));

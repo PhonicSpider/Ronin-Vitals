@@ -210,42 +210,6 @@ public static class NetworkDiagnosticsService
     }
 
     /// <summary>
-    /// Real check for whether Windows Firewall is on for the active network profile
-    /// (`netsh advfirewall show currentprofile state`). Scoped honestly to "is the firewall on"
-    /// rather than "is this specific app/connection being blocked" - answering the latter would
-    /// need enumerating and matching individual firewall rules, which isn't a safe instant read.
-    /// </summary>
-    public static CheckResult CheckFirewallStatus()
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "netsh",
-            Arguments = "advfirewall show currentprofile state",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-        };
-
-        using var process = Process.Start(psi);
-        if (process is null)
-            return new CheckResult(CheckStatus.Warn, "Couldn't check the firewall's status.");
-
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit(5000);
-
-        var stateLine = output.Split('\n').FirstOrDefault(l => l.TrimStart().StartsWith("State", StringComparison.OrdinalIgnoreCase));
-        if (stateLine is null)
-            return new CheckResult(CheckStatus.Warn, "Couldn't determine the firewall's current status.");
-
-        if (stateLine.Contains("OFF", StringComparison.OrdinalIgnoreCase))
-            return new CheckResult(CheckStatus.Bad, "Windows Firewall is turned off for your current network - your connection isn't protected.");
-
-        return stateLine.Contains("ON", StringComparison.OrdinalIgnoreCase)
-            ? new CheckResult(CheckStatus.Pass, "Windows Firewall is on and active.")
-            : new CheckResult(CheckStatus.Warn, "Couldn't determine the firewall's current status.");
-    }
-
-    /// <summary>
     /// SafeAutoFix - runs the built-in `ipconfig /flushdns`. Only clears a client-side cache,
     /// nothing persistent or reversible-needing.
     /// </summary>

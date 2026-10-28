@@ -36,6 +36,10 @@ public static class SafeFixService
         {
             applied = await apply();
         }
+        catch (FixDeclinedException ex)
+        {
+            return new FixOutcome(false, ex.Message);
+        }
         catch (Exception ex)
         {
             return new FixOutcome(false, $"Something went wrong applying the fix: {ex.Message}");
