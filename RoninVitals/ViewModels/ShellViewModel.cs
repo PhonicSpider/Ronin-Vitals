@@ -10,6 +10,7 @@ namespace RoninVitals.ViewModels;
 public partial class ShellViewModel : ObservableObject
 {
     private readonly DispatcherTimer _vitalsTimer;
+    private readonly DispatcherTimer _uptimeTimer;
     private readonly List<VitalMetricViewModel> _allVitals;
     private readonly SystemMetricsService _metrics = new();
 
@@ -45,9 +46,15 @@ public partial class ShellViewModel : ObservableObject
         _vitalsTimer.Tick += (_, _) =>
         {
             foreach (var vital in _allVitals) vital.Sample();
-            UptimeText = _metrics.SampleUptimeText();
         };
         _vitalsTimer.Start();
+
+        // Its own faster timer: the clock shows seconds, and sampling it on the 700 ms vitals timer
+        // would repeat one second and skip the next. 250 ms keeps it ticking evenly, and reading the
+        // tick counter is effectively free.
+        _uptimeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _uptimeTimer.Tick += (_, _) => UptimeText = _metrics.SampleUptimeText();
+        _uptimeTimer.Start();
 
         CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
     }
@@ -65,8 +72,8 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty] private object _currentView;
     [ObservableProperty] private bool _hasLogEntries;
 
-    /// <summary>System uptime as "Days:Hours:Minutes", shown as floating text in the top bar (not a
-    /// vitals tile - it has no gauge). Refreshed on the same timer as the vitals; only changes once a minute.</summary>
+    /// <summary>System uptime as "Days:Hours:Minutes:Seconds", shown as floating text in the top bar (not
+    /// a vitals tile - it has no gauge). Refreshed by its own timer so the seconds tick evenly.</summary>
     [ObservableProperty] private string _uptimeText = string.Empty;
 
     [RelayCommand]
