@@ -7,9 +7,7 @@ public partial class App : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Elevated helper mode: relaunched by RestorePointService with a UAC prompt for just
-        // this one action. Do the WMI call and exit immediately - never shows a window, never
-        // runs the rest of the app elevated.
+        // Elevated helper mode: relaunched by ElevatedHelperLauncher to do one admin-only job. Exits without showing a window.
         if (e.Args.Length >= 2 && e.Args[0] == RestorePointService.ElevatedArg)
         {
             Environment.Exit(RestorePointService.RunElevatedCreateRestorePoint(e.Args[1]));

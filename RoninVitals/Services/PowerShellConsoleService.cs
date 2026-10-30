@@ -1,26 +1,14 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 namespace RoninVitals.Services;
 
 /// <summary>
-/// Hosts one real, persistent PowerShell process for Tech Mode's console panel - not a
-/// simulated or text-only log. Commands are written to its stdin and results read back from its
-/// stdout, one at a time (the console UI disables input while a command is running, so there's
-/// no concurrent-command case to handle).
-///
-/// Each command is wrapped as ONE compound statement - "Write-Output begin-marker; &lt;command&gt;;
-/// Write-Output end-marker" - sent as a single stdin line, rather than the command and a
-/// sentinel as two separate lines. That matters: a redirected PowerShell host still writes its
-/// own prompt strings (and sometimes echoes what it read) to stdout between reading one stdin
-/// line and the next, so sending the command and a trailing sentinel as two lines left a gap
-/// where that noise could land *between* them and get folded into the captured output - which
-/// is exactly what happened the first time this shipped (a stray "PS&gt;" prompt and echoed
-/// input ended up prepended to a real command's result). Wrapping everything into one compound
-/// statement closes that gap - nothing else can execute between the begin marker and the
-/// command, or between the command and the end marker, because PowerShell runs a single input
-/// line's statements back to back with nothing else able to interleave. Any prompt/echo noise
-/// still shows up, but only *before* the begin marker, where it's deliberately discarded.
+/// One persistent PowerShell process behind Tech Mode's console, so variables and the current
+/// folder carry over between commands. Run one command at a time; the console disables input
+/// while a command is running.
 /// </summary>
 public sealed class PowerShellConsoleService : IDisposable
 {
@@ -33,7 +21,7 @@ public sealed class PowerShellConsoleService : IDisposable
 
     public static Task<PowerShellConsoleService> CreateAsync()
     {
-        var psi = new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = "powershell.exe",
             Arguments = "-NoLogo -NoProfile",
@@ -44,44 +32,55 @@ public sealed class PowerShellConsoleService : IDisposable
             CreateNoWindow = true,
         };
 
-        var process = Process.Start(psi) ?? throw new InvalidOperationException("Couldn't start PowerShell.");
+        var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Couldn't start PowerShell.");
+
+        // Errors are folded into the output (see BuildScript); this only stops the pipe from filling up and freezing the shell.
+        process.ErrorDataReceived += (_, _) => { };
+        process.BeginErrorReadLine();
+
         return Task.FromResult(new PowerShellConsoleService(process));
     }
 
-    /// <summary>Runs one command and returns its output, discarding anything before the begin
-    /// marker (leftover prompt/echo noise) and stopping at the end marker. Call sequentially -
-    /// one command at a time.</summary>
+    /// <summary>Runs one command and returns what it printed, errors included.</summary>
     public async Task<string> RunCommandAsync(string command)
     {
         var token = Guid.NewGuid().ToString("N");
-        var begin = $"__RONIN_BEGIN_{token}__";
-        var end = $"__RONIN_END_{token}__";
+        var beginMarker = $"__RONIN_BEGIN_{token}__";
+        var endMarker = $"__RONIN_END_{token}__";
 
-        await _process.StandardInput.WriteLineAsync($"Write-Output '{begin}'; {command}; Write-Output '{end}'");
+        await _process.StandardInput.WriteLineAsync(BuildScript(command, beginMarker, endMarker));
         await _process.StandardInput.FlushAsync();
 
-        // Exact match after trimming, not Contains - PowerShell's host echoes the raw input
-        // line back for redirected/piped stdin, and that echoed line also *contains* the begin
-        // marker as a substring (it's literally part of what was sent). A Contains check matches
-        // that echo instead of the real Write-Output result that follows it, so the echo's own
-        // marker text was ending up captured as part of the "output" - confirmed live: `Get-Date`
-        // returned "__RONIN_BEGIN_...__\nSunday, August 9, 2026 ...". The real Write-Output
-        // result is the marker and nothing else on its own line, which an exact match correctly
-        // distinguishes from the longer echoed compound statement.
+        // The host echoes the input line, which contains the marker text too, so only a line that is exactly the marker counts.
         string? line;
         while ((line = await _process.StandardOutput.ReadLineAsync()) is not null)
         {
-            if (line.Trim() == begin) break;
+            if (line.Trim() == beginMarker) break;
         }
 
         var output = new StringBuilder();
         while ((line = await _process.StandardOutput.ReadLineAsync()) is not null)
         {
-            if (line.Trim() == end) break;
+            if (line.Trim() == endMarker) break;
             output.AppendLine(line);
         }
 
         return output.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Wraps the command as one input line so nothing can interleave between the markers. The command
+    /// travels as Base64 and runs through Invoke-Expression inside try/catch: a typo that cannot parse
+    /// becomes a printed error, not an unterminated line the shell waits on forever. The dot-sourced
+    /// block keeps variables in the session scope while still letting 2&gt;&amp;1 catch the command's errors.
+    /// </summary>
+    private static string BuildScript(string command, string beginMarker, string endMarker)
+    {
+        var encodedCommand = Convert.ToBase64String(Encoding.UTF8.GetBytes(command));
+        return $"Write-Output '{beginMarker}'; " +
+               $"try {{ . {{ Invoke-Expression ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encodedCommand}'))) }} 2>&1 | Out-String -Stream }} " +
+               "catch { $_.ToString() }; " +
+               $"Write-Output '{endMarker}'";
     }
 
     public void Dispose()
@@ -95,10 +94,9 @@ public sealed class PowerShellConsoleService : IDisposable
                 if (!_process.WaitForExit(1000)) _process.Kill();
             }
         }
-        catch
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or Win32Exception)
         {
-            // Best-effort cleanup - the process dying on its own or already being gone isn't
-            // worth surfacing an error for here.
+            // The process already exited or its pipe closed; nothing left to clean up.
         }
         _process.Dispose();
     }

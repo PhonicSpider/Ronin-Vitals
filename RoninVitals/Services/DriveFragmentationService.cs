@@ -1,26 +1,28 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Management;
+using System.Text.RegularExpressions;
 using RoninVitals.Models;
 
 namespace RoninVitals.Services;
 
 /// <summary>
-/// Real drive-fragmentation check, HDD-only. SSD/NVMe drives don't fragment in any way that
-/// matters (no moving parts, no seek-time penalty, and Windows runs TRIM instead of defrag on
-/// them) - those are answered instantly and honestly without touching any fragmentation API at
-/// all. For a genuine HDD, both `defrag /A` (analyze-only) and the legacy
-/// `Win32_Volume.DefragAnalysis` WMI method were tested against a real HDD on the dev machine
-/// and both require admin rights just to read fragmentation on this Windows version - `defrag /A`
-/// refused outright ("insufficient privileges"), and the WMI method returned an empty/failed
-/// result (ReturnValue 11, every field blank) without elevation. The app requests elevation at
-/// launch (see app.manifest), so this normally just runs the analysis in-process; the
-/// relaunch-with-"runas" path below is kept as a fallback for the rare case the process isn't
-/// already elevated, same reasoning as RestorePointService.
+/// Drive-fragmentation check, HDD only: SSDs and NVMe drives don't fragment in a way that matters, so
+/// they are answered without touching any fragmentation API. For an HDD the WMI DefragAnalysis method
+/// needs administrator rights (tested against a real drive); the app already holds them from launch, and
+/// if it does not, the exe relaunches itself elevated for just this call.
 /// </summary>
-public static class DriveFragmentationService
+public static partial class DriveFragmentationService
 {
     public const string ElevatedArg = "--analyze-fragmentation";
+
+    private const double FragmentedPercentThreshold = 10;
+
+    // Exit codes shared by the in-process call and the elevated helper.
+    private const int ExitNotFragmented = 0;
+    private const int ExitFragmented = 1;
+    private const int ExitUnknown = 2;
+
+    [GeneratedRegex(@"^[A-Za-z]:$")]
+    private static partial Regex DriveLetterPattern();
 
     public static CheckResult CheckFragmentation()
     {
@@ -28,95 +30,63 @@ public static class DriveFragmentationService
         if (hddLetters.Count == 0)
             return new CheckResult(CheckStatus.Pass, "All your drives are solid-state - fragmentation doesn't apply to SSDs/NVMe, nothing to optimize here.");
 
-        // Analyze one representative HDD rather than elevating once per drive - multiple UAC
-        // prompts in a single diagnostic run would be a rough experience.
+        // One representative HDD, so a non-elevated run shows a single UAC prompt rather than one per drive.
         var driveLetter = hddLetters[0];
 
-        // Already elevated (the app requests it at launch - see app.manifest) - run the analysis
-        // in-process rather than relaunching with "runas", which would show a second consent
-        // prompt for something the user already approved once at startup.
         if (ElevationService.IsElevated)
             return MapExitCode(RunElevatedAnalyze(driveLetter), driveLetter);
 
-        var exePath = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exePath))
-            return new CheckResult(CheckStatus.Warn, "Couldn't locate the app's own executable to check fragmentation.");
+        var launch = ElevatedHelperLauncher.Run($"{ElevatedArg} {driveLetter}");
 
-        var psi = new ProcessStartInfo
+        return launch.Outcome switch
         {
-            FileName = exePath,
-            Arguments = $"{ElevatedArg} {driveLetter}",
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden,
+            ElevatedLaunchOutcome.Declined => new CheckResult(CheckStatus.Warn, $"You declined the administrator prompt, so fragmentation couldn't be checked on drive {driveLetter}."),
+            ElevatedLaunchOutcome.Failed => new CheckResult(CheckStatus.Warn, $"Couldn't check fragmentation: {launch.ErrorMessage}"),
+            _ => MapExitCode(launch.ExitCode, driveLetter),
         };
-
-        Process process;
-        try
-        {
-            process = Process.Start(psi)!;
-        }
-        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223) // ERROR_CANCELLED - user clicked "No"
-        {
-            return new CheckResult(CheckStatus.Warn, $"You declined the administrator prompt, so fragmentation couldn't be checked on drive {driveLetter}.");
-        }
-        catch (Exception exception)
-        {
-            return new CheckResult(CheckStatus.Warn, $"Couldn't check fragmentation: {exception.Message}");
-        }
-
-        process.WaitForExit();
-
-        return MapExitCode(process.ExitCode, driveLetter);
     }
 
     private static CheckResult MapExitCode(int exitCode, string driveLetter) => exitCode switch
     {
-        0 => new CheckResult(CheckStatus.Pass, $"Drive {driveLetter} isn't significantly fragmented."),
-        1 => new CheckResult(CheckStatus.Warn, $"Drive {driveLetter} is fragmented enough that defragmenting could help performance."),
+        ExitNotFragmented => new CheckResult(CheckStatus.Pass, $"Drive {driveLetter} isn't significantly fragmented."),
+        ExitFragmented => new CheckResult(CheckStatus.Warn, $"Drive {driveLetter} is fragmented enough that defragmenting could help performance."),
         _ => new CheckResult(CheckStatus.Warn, $"Couldn't determine fragmentation on drive {driveLetter}."),
     };
 
-    /// <summary>
-    /// Runs in the elevated child process only - invoked from App.xaml.cs before any UI is
-    /// created. Returns a process exit code (see CheckFragmentation's mapping above).
-    /// </summary>
+    /// <summary>Analyzes one drive ("C:") and returns an exit code (see MapExitCode). Also run by the elevated helper from App.xaml.cs.</summary>
     public static int RunElevatedAnalyze(string driveLetter)
     {
+        // The value goes into a WMI query, so accept only a bare drive letter.
+        if (!DriveLetterPattern().IsMatch(driveLetter)) return ExitUnknown;
+
         try
         {
             using var searcher = new ManagementObjectSearcher($"SELECT * FROM Win32_Volume WHERE DriveLetter = '{driveLetter}'");
             using var volumes = searcher.Get();
 
             ManagementObject? volume = null;
-            foreach (ManagementObject firstVolume in volumes) { volume = firstVolume; break; }
-            if (volume is null) return 2;
+            foreach (ManagementObject match in volumes) { volume = match; break; }
+            if (volume is null) return ExitUnknown;
 
             using (volume)
             {
-                using var result = volume.InvokeMethod("DefragAnalysis", null, null);
-                if (result is null) return 2;
+                using var analysis = volume.InvokeMethod("DefragAnalysis", null, null);
+                if (analysis is null || Convert.ToUInt32(analysis["ReturnValue"]) != 0) return ExitUnknown;
 
-                var returnValue = Convert.ToUInt32(result["ReturnValue"]);
-                if (returnValue != 0) return 2;
+                using var details = (ManagementBaseObject)analysis["DefragAnalysis"];
+                var percentFragmented = details["TotalPercentFragmentation"];
+                if (percentFragmented is null) return ExitUnknown;
 
-                using var data = (ManagementBaseObject)result["DefragAnalysis"];
-                var totalFragObj = data["TotalPercentFragmentation"];
-                if (totalFragObj is null) return 2;
-
-                var totalFrag = Convert.ToDouble(totalFragObj);
-                return totalFrag < 10 ? 0 : 1;
+                return Convert.ToDouble(percentFragmented) < FragmentedPercentThreshold ? ExitNotFragmented : ExitFragmented;
             }
         }
-        catch
+        catch (Exception)
         {
-            return 2;
+            return ExitUnknown; // WMI refused or failed; report "couldn't determine" rather than crash
         }
     }
 
-    /// <summary>Drive letters that sit on a genuine HDD - reuses EnvironmentInfoService's drive
-    /// inventory (physical disk + type + letters) rather than reimplementing the same WMI
-    /// associator chain a second time.</summary>
+    /// <summary>Drive letters that sit on a genuine HDD, from the shared drive inventory.</summary>
     private static List<string> GetHddDriveLetters() =>
         EnvironmentInfoService.GatherDriveInventory()
             .Where(drive => drive.MediaType == DriveMediaType.Hdd)
