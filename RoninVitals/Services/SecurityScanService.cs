@@ -1,223 +1,234 @@
 using System.Diagnostics;
-using System.Text;
+using System.Management;
 using System.Text.Json;
 using RoninVitals.Models;
 
 namespace RoninVitals.Services;
 
 /// <summary>
-/// Drives Microsoft Defender, the antivirus built into Windows, rather than pretending Vitals can be one.
-/// Defender is a real, constantly updated engine; a homemade scanner would give people false confidence.
-/// Status and definition age are read-only. The quick scan runs Defender's own scan, and Defender then
-/// handles anything it is sure about by its normal policy (quarantine or remove), exactly as it would if
-/// the user had started the scan in Windows Security. Vitals only reports the outcome and never deletes
-/// or moves a file itself. The one fix, updating definitions, only downloads Microsoft's latest signatures.
-/// If another antivirus is the active one, Defender may be off or passive, and the checks say so plainly.
+/// Drives Microsoft Defender rather than imitating an antivirus. Status and definition age are read-only. The quick scan
+/// is Defender's own, and Defender applies its normal policy to what it finds; Vitals only reports the outcome and never
+/// deletes or moves a file. The one fix downloads Microsoft's latest definitions. When another antivirus is active
+/// Windows turns Defender off on purpose, and the checks say so instead of raising an alarm.
 /// </summary>
 public static class SecurityScanService
 {
+    private const int NeverUpdatedSignatureAge = 65535; // Defender's marker for "no definitions yet"
+    private const int FreshDefinitionDays = 3;
+    private const int StaleDefinitionDays = 7;
+    private const string StatusTechCommand = "Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMRunningMode, AntivirusSignatureAge";
+    private const string StatusScript = "Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AMRunningMode,AntivirusSignatureAge | ConvertTo-Json -Compress";
+
+    private static readonly TimeSpan StatusTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DetectionQueryTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ScanTimeout = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan UpdateTimeout = TimeSpan.FromMinutes(5);
 
-    private sealed record DefenderStatus(bool ServiceEnabled, bool AntivirusEnabled, bool RealTimeEnabled, string RunningMode, int SignatureAgeDays);
-
-    private const string StatusCommand =
-        "Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AMRunningMode,AntivirusSignatureAge | ConvertTo-Json -Compress";
-
-    private static DefenderStatus? ReadStatus(out string detail)
+    private sealed record DefenderStatus(bool ServiceEnabled, bool AntivirusEnabled, bool RealTimeEnabled, string RunningMode, int SignatureAgeDays)
     {
-        var result = PowerShellRunner.Run(StatusCommand, TimeSpan.FromSeconds(30));
-        if (result.ExitCode != 0 || result.Output.Length == 0)
-        {
-            detail = result.TimedOut ? "Timed out reading Defender status." : $"Get-MpComputerStatus failed: {FirstLine(result.Error)}";
-            return null;
-        }
+        /// <summary>Defender is standing by because another security product is in charge.</summary>
+        public bool IsStandingBy =>
+            RunningMode.Contains("Passive", StringComparison.OrdinalIgnoreCase) || RunningMode.Contains("EDR", StringComparison.OrdinalIgnoreCase);
+
+        public bool IsRunning => ServiceEnabled && AntivirusEnabled && !IsStandingBy;
+    }
+
+    private sealed record OtherAntivirus(IReadOnlyList<string> Names, string Detail)
+    {
+        public bool IsPresent => Names.Count > 0;
+        public string Text => string.Join(" and ", Names);
+    }
+
+    public sealed record Detection(string Name, string Resources);
+
+    // ── Reading Defender and Windows Security Center ────────────────────────────────────────
+
+    private static (DefenderStatus? Status, string Detail) ReadStatus()
+    {
+        var result = PowerShellRunner.Run(StatusScript, StatusTimeout);
+        if (!result.Succeeded || result.Output.Length == 0)
+            return (null, result.TimedOut ? "Timed out reading Defender status." : $"Get-MpComputerStatus failed: {FirstLineOf(result.Error)}");
 
         try
         {
-            using var doc = JsonDocument.Parse(result.Output);
-            var root = doc.RootElement;
-            bool Flag(string name) => root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.True;
-            var mode = root.TryGetProperty("AMRunningMode", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() ?? "Unknown" : "Unknown";
-            var age = root.TryGetProperty("AntivirusSignatureAge", out var a) && a.TryGetInt32(out var days) ? days : -1;
-            detail = result.Output;
-            return new DefenderStatus(Flag("AMServiceEnabled"), Flag("AntivirusEnabled"), Flag("RealTimeProtectionEnabled"), mode, age);
+            using var document = JsonDocument.Parse(result.Output);
+            var root = document.RootElement;
+            var signatureAge = root.TryGetProperty("AntivirusSignatureAge", out var ageElement) && ageElement.TryGetInt32(out var days) ? days : -1;
+            var status = new DefenderStatus(
+                ServiceEnabled: ReadFlag(root, "AMServiceEnabled"),
+                AntivirusEnabled: ReadFlag(root, "AntivirusEnabled"),
+                RealTimeEnabled: ReadFlag(root, "RealTimeProtectionEnabled"),
+                RunningMode: ReadString(root, "AMRunningMode") ?? "Unknown",
+                SignatureAgeDays: signatureAge);
+            return (status, result.Output);
         }
-        catch (JsonException ex)
+        catch (JsonException exception)
         {
-            detail = $"Couldn't read Defender's answer: {ex.Message}";
-            return null;
+            return (null, $"Couldn't read Defender's answer: {exception.Message}");
         }
     }
 
-    private static string FirstLine(string text) => text.Split('\n', 2)[0].Trim();
+    private static bool ReadFlag(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
 
-    /// <summary>
-    /// Non-Defender antivirus programs that Windows Security Center says are switched on (ESET, Norton,
-    /// McAfee, Bitdefender and so on). When one is active Windows deliberately turns Defender off, so
-    /// "Defender is off" is NOT a problem there - it just means Vitals cannot run that program's scan.
-    /// Decoded from productState: bit 0x1000 = "on". Found live: this PC runs ESET, and the first version
-    /// of this check told its owner nothing was watching for threats.
-    /// </summary>
-    private static List<string> ReadOtherActiveAntivirus(out string detail)
+    private static string? ReadString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static string FirstLineOf(string text) => text.Split('\n', 2)[0].Trim();
+
+    /// <summary>Non-Defender antivirus that Windows Security Center reports as switched on (productState bit 0x1000).</summary>
+    private static OtherAntivirus ReadOtherActiveAntivirus()
     {
-        var names = new List<string>();
+        var activeNames = new List<string>();
         var seen = new List<string>();
         try
         {
-            using var searcher = new System.Management.ManagementObjectSearcher(@"root\SecurityCenter2", "SELECT displayName, productState FROM AntiVirusProduct");
-            foreach (System.Management.ManagementObject product in searcher.Get())
+            using var searcher = new ManagementObjectSearcher(@"root\SecurityCenter2", "SELECT displayName, productState FROM AntiVirusProduct");
+            foreach (ManagementObject product in searcher.Get())
             {
                 var name = product["displayName"] as string ?? "Unknown antivirus";
-                var state = Convert.ToInt32(product["productState"] ?? 0);
-                var on = (state & 0xF000) == 0x1000;
-                seen.Add($"{name} (state 0x{state:X6}, {(on ? "on" : "off")})");
-                if (on && !name.Contains("Defender", StringComparison.OrdinalIgnoreCase) && !names.Contains(name)) names.Add(name);
+                var productState = Convert.ToInt32(product["productState"] ?? 0);
+                var isOn = (productState & 0xF000) == 0x1000;
+                seen.Add($"{name} (state 0x{productState:X6}, {(isOn ? "on" : "off")})");
+                if (isOn && !name.Contains("Defender", StringComparison.OrdinalIgnoreCase) && !activeNames.Contains(name)) activeNames.Add(name);
             }
-            detail = seen.Count == 0 ? "Security Center lists no antivirus products." : "Security Center: " + string.Join("; ", seen.Distinct());
+            var detail = seen.Count == 0 ? "Security Center lists no antivirus products." : "Security Center: " + string.Join("; ", seen.Distinct());
+            return new OtherAntivirus(activeNames, detail);
         }
-        catch (Exception ex) when (ex is System.Management.ManagementException or UnauthorizedAccessException or InvalidCastException)
+        catch (Exception exception) when (exception is ManagementException or UnauthorizedAccessException or InvalidCastException)
         {
-            detail = $"Couldn't read Security Center: {ex.Message}";
+            return new OtherAntivirus(activeNames, $"Couldn't read Security Center: {exception.Message}");
         }
-        return names;
     }
 
-    private static string Join(List<string> names) => names.Count == 1 ? names[0] : string.Join(" and ", names);
-
-    private static bool DefenderIsRunning(DefenderStatus s) => s.ServiceEnabled && s.AntivirusEnabled
-        && !s.RunningMode.Contains("Passive", StringComparison.OrdinalIgnoreCase) && !s.RunningMode.Contains("EDR", StringComparison.OrdinalIgnoreCase);
-
-    private const string StatusTechCommand = "Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMRunningMode, AntivirusSignatureAge";
-
-    // ── Is Defender on? ─────────────────────────────────────────────────────────────────────────
+    // ── Checks ──────────────────────────────────────────────────────────────────────────────
 
     public static CheckResult CheckDefenderStatus()
     {
-        var status = ReadStatus(out var detail);
+        var (status, detail) = ReadStatus();
         if (status is null)
             return new CheckResult(CheckStatus.Warn, "Microsoft Defender isn't available here - another antivirus may be in charge of this PC. Scan with that program instead.", StatusTechCommand, detail);
 
-        if (!DefenderIsRunning(status))
+        if (!status.IsRunning)
         {
-            var others = ReadOtherActiveAntivirus(out var avDetail);
-            var combined = $"{detail} | {avDetail}";
-            if (others.Count > 0)
+            var otherAntivirus = ReadOtherActiveAntivirus();
+            var techDetail = $"{detail} | {otherAntivirus.Detail}";
+            if (otherAntivirus.IsPresent)
                 return new CheckResult(CheckStatus.Warn,
-                    $"{Join(others)} is your antivirus, so Windows keeps Microsoft Defender switched off - that's normal. Vitals can only start Defender scans, so open {Join(others)} and run its scan from there.",
-                    StatusTechCommand, combined);
+                    $"{otherAntivirus.Text} is your antivirus, so Windows keeps Microsoft Defender switched off - that's normal. Vitals can only start Defender scans, so open {otherAntivirus.Text} and run its scan from there.",
+                    StatusTechCommand, techDetail);
 
-            return status.RunningMode.Contains("Passive", StringComparison.OrdinalIgnoreCase) || status.RunningMode.Contains("EDR", StringComparison.OrdinalIgnoreCase)
-                ? new CheckResult(CheckStatus.Warn, "Another security product is in charge on this PC and Defender is standing by. Run that product's scan too.", StatusTechCommand, combined)
-                : new CheckResult(CheckStatus.Bad, "Microsoft Defender is turned off and no other antivirus is protecting this PC, so nothing is watching for threats.", StatusTechCommand, combined);
+            return status.IsStandingBy
+                ? new CheckResult(CheckStatus.Warn, "Another security product is in charge on this PC and Defender is standing by. Run that product's scan too.", StatusTechCommand, techDetail)
+                : new CheckResult(CheckStatus.Bad, "Microsoft Defender is turned off and no other antivirus is protecting this PC, so nothing is watching for threats.", StatusTechCommand, techDetail);
         }
 
-        if (!status.RealTimeEnabled)
-            return new CheckResult(CheckStatus.Warn, "Defender's real-time protection is off, so threats aren't blocked as they appear. A scan can still find them.", StatusTechCommand, detail);
-
-        return new CheckResult(CheckStatus.Pass, "Microsoft Defender is on and watching in real time.", StatusTechCommand, detail);
+        return status.RealTimeEnabled
+            ? new CheckResult(CheckStatus.Pass, "Microsoft Defender is on and watching in real time.", StatusTechCommand, detail)
+            : new CheckResult(CheckStatus.Warn, "Defender's real-time protection is off, so threats aren't blocked as they appear. A scan can still find them.", StatusTechCommand, detail);
     }
-
-    // ── Are its virus definitions current? ──────────────────────────────────────────────────────
 
     public static CheckResult CheckDefenderDefinitions()
     {
-        var status = ReadStatus(out var detail);
+        var (status, detail) = ReadStatus();
         if (status is null || status.SignatureAgeDays < 0)
             return new CheckResult(CheckStatus.Warn, "Couldn't tell how recent Defender's virus definitions are.", StatusTechCommand, detail);
 
-        if (!DefenderIsRunning(status))
+        if (!status.IsRunning)
         {
-            var others = ReadOtherActiveAntivirus(out var avDetail);
-            return others.Count > 0
-                ? new CheckResult(CheckStatus.Pass, $"Doesn't apply here - {Join(others)} is your antivirus and manages its own virus definitions.", StatusTechCommand, $"{detail} | {avDetail}")
-                : new CheckResult(CheckStatus.Warn, "Defender isn't running, so its virus definitions aren't being kept up to date.", StatusTechCommand, $"{detail} | {avDetail}");
+            var otherAntivirus = ReadOtherActiveAntivirus();
+            var techDetail = $"{detail} | {otherAntivirus.Detail}";
+            return otherAntivirus.IsPresent
+                ? new CheckResult(CheckStatus.Pass, $"Doesn't apply here - {otherAntivirus.Text} is your antivirus and manages its own virus definitions.", StatusTechCommand, techDetail)
+                : new CheckResult(CheckStatus.Warn, "Defender isn't running, so its virus definitions aren't being kept up to date.", StatusTechCommand, techDetail);
         }
 
-        var age = status.SignatureAgeDays;
-        if (age >= 65535) // Defender's own "never updated" marker, not a real number of days
-            return new CheckResult(CheckStatus.Bad, "Defender has never downloaded virus definitions, so a scan has nothing to compare against.", StatusTechCommand, $"AntivirusSignatureAge = {age} (never updated). Raw: {detail}");
+        var ageInDays = status.SignatureAgeDays;
+        if (ageInDays >= NeverUpdatedSignatureAge)
+            return new CheckResult(CheckStatus.Bad, "Defender has never downloaded virus definitions, so a scan has nothing to compare against.", StatusTechCommand, $"AntivirusSignatureAge = {ageInDays} (never updated). Raw: {detail}");
 
-        var when = age == 0 ? "today" : age == 1 ? "yesterday" : $"{age} days ago";
-        var techDetail = $"AntivirusSignatureAge = {age} day(s). Raw: {detail}";
-        return age switch
+        var updatedWhen = ageInDays switch { 0 => "today", 1 => "yesterday", _ => $"{ageInDays} days ago" };
+        var ageDetail = $"AntivirusSignatureAge = {ageInDays} day(s). Raw: {detail}";
+        return ageInDays switch
         {
-            <= 3 => new CheckResult(CheckStatus.Pass, $"Defender's virus definitions were updated {when}.", StatusTechCommand, techDetail),
-            <= 7 => new CheckResult(CheckStatus.Warn, $"Defender's virus definitions were last updated {when} - a scan with old definitions can miss newer threats.", StatusTechCommand, techDetail),
-            _ => new CheckResult(CheckStatus.Bad, $"Defender's virus definitions are {age} days old - a scan with definitions this old can miss recent threats.", StatusTechCommand, techDetail),
+            <= FreshDefinitionDays => new CheckResult(CheckStatus.Pass, $"Defender's virus definitions were updated {updatedWhen}.", StatusTechCommand, ageDetail),
+            <= StaleDefinitionDays => new CheckResult(CheckStatus.Warn, $"Defender's virus definitions were last updated {updatedWhen} - a scan with old definitions can miss newer threats.", StatusTechCommand, ageDetail),
+            _ => new CheckResult(CheckStatus.Bad, $"Defender's virus definitions are {ageInDays} days old - a scan with definitions this old can miss recent threats.", StatusTechCommand, ageDetail),
         };
     }
 
-    /// <summary>SafeAutoFix - asks Defender to download Microsoft's latest definitions (Update-MpSignature).</summary>
-    public static async Task<bool> UpdateDefenderDefinitionsAsync() =>
-        await Task.Run(() => PowerShellRunner.Run("Update-MpSignature", UpdateTimeout).ExitCode == 0);
-
-    // ── The scan itself ─────────────────────────────────────────────────────────────────────────
+    /// <summary>SafeAutoFix: downloads Microsoft's latest Defender definitions (<c>Update-MpSignature</c>).</summary>
+    public static Task<bool> UpdateDefenderDefinitionsAsync() =>
+        Task.Run(() => PowerShellRunner.Run("Update-MpSignature", UpdateTimeout).Succeeded);
 
     public static CheckResult CheckDefenderQuickScan()
     {
         const string techCommand = "Start-MpScan -ScanType QuickScan; Get-MpThreatDetection | Where-Object InitialDetectionTime -ge <scan start>";
 
-        var status = ReadStatus(out var statusDetail);
+        var (status, statusDetail) = ReadStatus();
         if (status is null)
             return new CheckResult(CheckStatus.Warn, "Couldn't start a Defender scan - Defender doesn't seem to be available here.", techCommand, statusDetail);
 
-        if (!DefenderIsRunning(status))
+        if (!status.IsRunning)
         {
-            var others = ReadOtherActiveAntivirus(out var avDetail);
-            return others.Count > 0
-                ? new CheckResult(CheckStatus.Warn, $"Vitals can't scan with Defender because {Join(others)} is your antivirus. Open {Join(others)} and run its scan from there.", techCommand, $"{statusDetail} | {avDetail}")
-                : new CheckResult(CheckStatus.Warn, "Defender isn't running, so there's nothing for Vitals to scan with. Turn it on in Windows Security, then run this again.", techCommand, $"{statusDetail} | {avDetail}");
+            var otherAntivirus = ReadOtherActiveAntivirus();
+            var techDetail = $"{statusDetail} | {otherAntivirus.Detail}";
+            return otherAntivirus.IsPresent
+                ? new CheckResult(CheckStatus.Warn, $"Vitals can't scan with Defender because {otherAntivirus.Text} is your antivirus. Open {otherAntivirus.Text} and run its scan from there.", techCommand, techDetail)
+                : new CheckResult(CheckStatus.Warn, "Defender isn't running, so there's nothing for Vitals to scan with. Turn it on in Windows Security, then run this again.", techCommand, techDetail);
         }
 
-        // Millisecond-free ISO text: PowerShell's [datetime] cast parses it the same way in every culture.
-        var started = DateTime.Now;
-        var clock = Stopwatch.StartNew();
+        var scanStartedAt = DateTime.Now;
+        var stopwatch = Stopwatch.StartNew();
         var scan = PowerShellRunner.Run("Start-MpScan -ScanType QuickScan", ScanTimeout);
-        clock.Stop();
+        stopwatch.Stop();
 
         if (scan.TimedOut)
             return new CheckResult(CheckStatus.Warn, "Defender's quick scan is taking much longer than usual, so Vitals stopped waiting. It may still be running - check Windows Security.", techCommand, $"No result after {ScanTimeout.TotalMinutes:0} minutes.");
-        if (scan.ExitCode != 0)
-            return new CheckResult(CheckStatus.Warn, "Defender couldn't run the scan from here. You can start one yourself in Windows Security > Virus & threat protection.", techCommand, $"Start-MpScan failed: {FirstLine(scan.Error)}");
+        if (!scan.Succeeded)
+            return new CheckResult(CheckStatus.Warn, "Defender couldn't run the scan from here. You can start one yourself in Windows Security > Virus & threat protection.", techCommand, $"Start-MpScan failed: {FirstLineOf(scan.Error)}");
 
-        var duration = $"{(int)clock.Elapsed.TotalMinutes}m {clock.Elapsed.Seconds}s";
-        var iso = started.AddSeconds(-2).ToString("yyyy-MM-ddTHH:mm:ss");
-        var query = PowerShellRunner.Run(
-            $"$s=[datetime]'{iso}'; $names=@{{}}; Get-MpThreat | ForEach-Object {{ $names[$_.ThreatID]=$_.ThreatName }}; " +
-            "@(Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -ge $s } | ForEach-Object { [pscustomobject]@{ Name=$names[$_.ThreatID]; Resources=($_.Resources -join '; ') } }) | ConvertTo-Json -Compress",
-            TimeSpan.FromSeconds(60));
+        var duration = $"{(int)stopwatch.Elapsed.TotalMinutes}m {stopwatch.Elapsed.Seconds}s";
+        var detectionsSince = scanStartedAt.AddSeconds(-2).ToString("yyyy-MM-ddTHH:mm:ss"); // culture-neutral for PowerShell's [datetime]
+        var detectionQuery = PowerShellRunner.Run(
+            $"$since=[datetime]'{detectionsSince}'; $names=@{{}}; Get-MpThreat | ForEach-Object {{ $names[$_.ThreatID]=$_.ThreatName }}; " +
+            "@(Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -ge $since } | ForEach-Object { [pscustomobject]@{ Name=$names[$_.ThreatID]; Resources=($_.Resources -join '; ') } }) | ConvertTo-Json -Compress",
+            DetectionQueryTimeout);
 
-        var found = ParseDetections(query.Output);
-        if (query.ExitCode != 0)
-            return new CheckResult(CheckStatus.Warn, "Defender finished its scan, but Vitals couldn't read the result. Check Windows Security > Protection history.", techCommand, $"Scan took {duration}. Result query failed: {FirstLine(query.Error)}");
+        if (!detectionQuery.Succeeded)
+            return new CheckResult(CheckStatus.Warn, "Defender finished its scan, but Vitals couldn't read the result. Check Windows Security > Protection history.", techCommand, $"Scan took {duration}. Result query failed: {FirstLineOf(detectionQuery.Error)}");
 
-        if (found.Count == 0)
-            return new CheckResult(CheckStatus.Pass, $"Defender's quick scan finished (it took {duration}) and found nothing.", techCommand, $"Scan took {duration}. No detections since {iso}.");
+        var detections = ParseDetections(detectionQuery.Output);
+        if (detections.Count == 0)
+            return new CheckResult(CheckStatus.Pass, $"Defender's quick scan finished (it took {duration}) and found nothing.", techCommand, $"Scan took {duration}. No detections since {detectionsSince}.");
 
-        var names = found.Select(f => f.Name).Distinct().ToList();
-        var shown = string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");
+        var threatNames = detections.Select(detection => detection.Name).Distinct().ToList();
+        var shownNames = string.Join(", ", threatNames.Take(3)) + (threatNames.Count > 3 ? $" and {threatNames.Count - 3} more" : "");
         return new CheckResult(CheckStatus.Bad,
-            $"Defender's quick scan found {found.Count} {(found.Count == 1 ? "threat" : "threats")} ({shown}). It has already acted on what it was sure about.",
+            $"Defender's quick scan found {detections.Count} {(detections.Count == 1 ? "threat" : "threats")} ({shownNames}). It has already acted on what it was sure about.",
             techCommand,
-            $"Scan took {duration}. Detections: " + string.Join(" | ", found.Select(f => $"{f.Name} in {f.Resources}")));
+            $"Scan took {duration}. Detections: " + string.Join(" | ", detections.Select(detection => $"{detection.Name} in {detection.Resources}")));
     }
 
-    /// <summary>ConvertTo-Json yields an object for one result, an array for several, and nothing for none.</summary>
-    public static List<(string Name, string Resources)> ParseDetections(string json)
+    /// <summary>PowerShell's <c>ConvertTo-Json</c> gives an object for one result, an array for several, and nothing for none.</summary>
+    public static List<Detection> ParseDetections(string json)
     {
-        var list = new List<(string, string)>();
-        if (string.IsNullOrWhiteSpace(json)) return list;
+        var detections = new List<Detection>();
+        if (string.IsNullOrWhiteSpace(json)) return detections;
 
-        using var doc = JsonDocument.Parse(json);
-        var items = doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().ToList() : new List<JsonElement> { doc.RootElement };
-        foreach (var item in items)
+        using var document = JsonDocument.Parse(json);
+        var items = document.RootElement.ValueKind == JsonValueKind.Array
+            ? document.RootElement.EnumerateArray().ToList()
+            : [document.RootElement];
+
+        foreach (var item in items.Where(item => item.ValueKind == JsonValueKind.Object))
         {
-            if (item.ValueKind != JsonValueKind.Object) continue;
-            var name = item.TryGetProperty("Name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
-            var resources = item.TryGetProperty("Resources", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
-            list.Add((string.IsNullOrWhiteSpace(name) ? "an unnamed threat" : name!, string.IsNullOrWhiteSpace(resources) ? "an unknown location" : resources!));
+            var name = ReadString(item, "Name");
+            var resources = ReadString(item, "Resources");
+            detections.Add(new Detection(
+                Name: string.IsNullOrWhiteSpace(name) ? "an unnamed threat" : name,
+                Resources: string.IsNullOrWhiteSpace(resources) ? "an unknown location" : resources));
         }
-        return list;
+        return detections;
     }
 }

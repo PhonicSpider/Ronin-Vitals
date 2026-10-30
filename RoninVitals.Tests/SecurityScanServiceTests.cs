@@ -30,8 +30,8 @@ public class SecurityScanServiceTests
         var found = SecurityScanService.ParseDetections("[{\"Name\":\"A\",\"Resources\":\"r1\"},{\"Name\":\"B\",\"Resources\":\"r2\"}]");
 
         Assert.Equal(2, found.Count);
-        Assert.Equal(("A", "r1"), found[0]);
-        Assert.Equal(("B", "r2"), found[1]);
+        Assert.Equal(new SecurityScanService.Detection("A", "r1"), found[0]);
+        Assert.Equal(new SecurityScanService.Detection("B", "r2"), found[1]);
     }
 
     [Fact]
