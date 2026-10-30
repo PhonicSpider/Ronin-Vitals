@@ -24,19 +24,20 @@ public static class EventLogDiagnosticsService
         return count;
     }
 
-    private static CheckResult SafeCount(string logName, string xpathQuery, Func<int, CheckResult> toResult, string failureMessage)
+    private static CheckResult SafeCount(string logName, string xpathQuery, Func<int, CheckResult> toResult, string failureMessage, string techCommand)
     {
         try
         {
-            return toResult(CountEvents(logName, xpathQuery));
+            var count = CountEvents(logName, xpathQuery);
+            return toResult(count) with { TechCommand = techCommand, TechDetail = $"{count} matching {CheckText.Plural(count, "event", "events")} in the {logName} log." };
         }
-        catch (EventLogException)
+        catch (EventLogException exception)
         {
-            return new CheckResult(CheckStatus.Warn, failureMessage);
+            return new CheckResult(CheckStatus.Warn, failureMessage, techCommand, CheckText.DescribeException(exception));
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException exception)
         {
-            return new CheckResult(CheckStatus.Warn, $"{failureMessage} (access denied).");
+            return new CheckResult(CheckStatus.Warn, $"{failureMessage} (access denied).", techCommand, CheckText.DescribeException(exception));
         }
     }
 
@@ -76,27 +77,102 @@ public static class EventLogDiagnosticsService
         }
     }
 
-    public static CheckResult CheckRecentCrashes() => SafeCount(
-        "Application",
-        "*[System[Provider[@Name='Application Error'] and TimeCreated[timediff(@SystemTime) <= 86400000]]]",
-        count => count switch
-        {
-            0 => new CheckResult(CheckStatus.Pass, "No application crashes in the last 24 hours."),
-            <= 2 => new CheckResult(CheckStatus.Warn, $"{count} application crash{(count == 1 ? "" : "es")} in the last 24 hours."),
-            _ => new CheckResult(CheckStatus.Bad, $"{count} application crashes in the last 24 hours - one program may be unstable."),
-        },
-        "Couldn't read the Application event log.");
+    /// <summary>One entry read from an event log, newest first. <see cref="Fields"/> are the event's data values in order.</summary>
+    internal sealed record LoggedEvent(int Id, string Provider, DateTime Time, IReadOnlyList<string> Fields)
+    {
+        /// <summary>The event's data values by name, filled only when asked for (see <see cref="ReadEvents"/>).</summary>
+        public IReadOnlyDictionary<string, string> NamedData { get; init; } = new Dictionary<string, string>();
+    }
 
-    public static CheckResult CheckRecentSystemErrors() => SafeCount(
-        "System",
-        "*[System[(Level=2) and TimeCreated[timediff(@SystemTime) <= 86400000]]]",
-        count => count switch
+    /// <summary>
+    /// Reads up to <paramref name="maxEvents"/> matching events, newest first. Throws the same exceptions as <see cref="EventLogReader"/>.
+    /// Pass <paramref name="includeNamedData"/> to read values by name, which is safer than by position but slower.
+    /// </summary>
+    internal static IReadOnlyList<LoggedEvent> ReadEvents(string logName, string xpathQuery, int maxEvents = 500, bool includeNamedData = false)
+    {
+        var query = new EventLogQuery(logName, PathType.LogName, xpathQuery) { ReverseDirection = true };
+        using var reader = new EventLogReader(query);
+
+        var events = new List<LoggedEvent>();
+        EventRecord? record;
+        while (events.Count < maxEvents && (record = reader.ReadEvent()) is not null)
         {
-            0 => new CheckResult(CheckStatus.Pass, "No system errors in the last 24 hours."),
-            <= 5 => new CheckResult(CheckStatus.Warn, $"{count} system error{(count == 1 ? "" : "s")} logged in the last 24 hours."),
-            _ => new CheckResult(CheckStatus.Bad, $"{count} system errors logged in the last 24 hours - worth a closer look."),
-        },
-        "Couldn't read the System event log.");
+            using (record)
+            {
+                var fields = record.Properties.Select(property => property.Value?.ToString() ?? string.Empty).ToList();
+                events.Add(new LoggedEvent(record.Id, record.ProviderName ?? string.Empty, record.TimeCreated ?? DateTime.MinValue, fields)
+                {
+                    NamedData = includeNamedData ? ReadNamedData(record) : new Dictionary<string, string>(),
+                });
+            }
+        }
+        return events;
+    }
+
+    private static Dictionary<string, string> ReadNamedData(EventRecord record)
+    {
+        var data = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var document = System.Xml.Linq.XDocument.Parse(record.ToXml());
+        foreach (var element in document.Descendants().Where(element => element.Name.LocalName == "Data"))
+        {
+            var name = element.Attribute("Name")?.Value;
+            if (name is not null) data[name] = element.Value;
+        }
+        return data;
+    }
+
+    /// <summary>Names the program that crashed or froze most often in the last week, so "a program keeps crashing" gets an answer.</summary>
+    public static CheckResult CheckRecentCrashes()
+    {
+        const string techCommand = "Get-WinEvent -LogName Application | Where-Object { $_.Id -in 1000,1002 } | Group-Object { $_.Properties[0].Value } | Sort-Object Count -Descending";
+        const string applicationErrorId = "EventID=1000";
+        const string applicationHangId = "EventID=1002";
+        var query = $"*[System[Provider[@Name='Application Error' or @Name='Application Hang'] and ({applicationErrorId} or {applicationHangId}) and TimeCreated[timediff(@SystemTime) <= {CrashRules.WindowDays * MillisecondsPerDay}]]]";
+
+        try
+        {
+            var events = ReadEvents("Application", query)
+                .Select(logged => new CrashEvent(
+                    Program: logged.Fields.Count > 0 ? logged.Fields[0] : "unknown program",
+                    FaultingModule: logged.Id == 1000 && logged.Fields.Count > 3 ? logged.Fields[3] : "unknown",
+                    WasFreeze: logged.Id == 1002))
+                .ToList();
+
+            return CrashRules.Summarize(events) with { TechCommand = techCommand, TechDetail = CrashRules.DescribeEvents(events) };
+        }
+        catch (EventLogException exception)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read the Application event log.", techCommand, CheckText.DescribeException(exception));
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read the Application event log (access denied).", techCommand, CheckText.DescribeException(exception));
+        }
+    }
+
+    private const int MillisecondsPerDay = 86_400_000;
+
+    /// <summary>Errors from the last 24 hours, with Microsoft's documented harmless DistributedCOM noise set aside and the biggest real source named.</summary>
+    public static CheckResult CheckRecentSystemErrors()
+    {
+        const string techCommand = "Get-WinEvent -FilterHashtable @{LogName='System';Level=2;StartTime=(Get-Date).AddDays(-1)} | Group-Object ProviderName,Id | Sort-Object Count -Descending";
+        try
+        {
+            var errors = ReadEvents("System", $"*[System[(Level=2) and TimeCreated[timediff(@SystemTime) <= {MillisecondsPerDay}]]]", maxEvents: 2000)
+                .Select(logged => new LoggedError(logged.Provider, logged.Id))
+                .ToList();
+
+            return ErrorRules.SummarizeSystemErrors(errors) with { TechCommand = techCommand, TechDetail = ErrorRules.DescribeSources(errors) };
+        }
+        catch (EventLogException exception)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read the System event log.", techCommand, CheckText.DescribeException(exception));
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return new CheckResult(CheckStatus.Warn, "Couldn't read the System event log (access denied).", techCommand, CheckText.DescribeException(exception));
+        }
+    }
 
     public static CheckResult CheckDiskErrors() => SafeCount(
         "System",
@@ -107,5 +183,6 @@ public static class EventLogDiagnosticsService
             <= 3 => new CheckResult(CheckStatus.Warn, $"{count} recoverable disk error{(count == 1 ? "" : "s")} found in the last week."),
             _ => new CheckResult(CheckStatus.Bad, $"{count} disk errors found in the last week - your drive may be failing."),
         },
-        "Couldn't read the System event log for disk errors.");
+        "Couldn't read the System event log for disk errors.",
+        "Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='disk','Ntfs';Level=1,2;StartTime=(Get-Date).AddDays(-7)}");
 }

@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.ServiceProcess;
 using Microsoft.Win32;
 using RoninVitals.Models;
 
@@ -45,11 +44,13 @@ public static class SystemDiagnosticsService
         var busy = totalDelta <= 0 ? 0 : 100.0 * (totalDelta - idleDelta) / totalDelta;
         busy = Math.Clamp(busy, 0, 100);
 
+        const string techCommand = "Get-Counter '\\Processor(_Total)\\% Processor Time'";
+        var detail = $"{busy:0.0}% busy, sampled over 300 ms across {Environment.ProcessorCount} logical processors.";
         return busy switch
         {
-            < 70 => new CheckResult(CheckStatus.Pass, $"CPU usage is normal ({busy:0}%)."),
-            < 90 => new CheckResult(CheckStatus.Warn, $"CPU usage is elevated ({busy:0}%)."),
-            _ => new CheckResult(CheckStatus.Bad, $"CPU usage is very high ({busy:0}%)."),
+            < 70 => new CheckResult(CheckStatus.Pass, $"CPU usage is normal ({busy:0}%).", techCommand, detail),
+            < 90 => new CheckResult(CheckStatus.Warn, $"CPU usage is elevated ({busy:0}%).", techCommand, detail),
+            _ => new CheckResult(CheckStatus.Bad, $"CPU usage is very high ({busy:0}%).", techCommand, detail),
         };
     }
 
@@ -77,12 +78,14 @@ public static class SystemDiagnosticsService
         if (!GlobalMemoryStatusEx(ref status))
             return new CheckResult(CheckStatus.Warn, "Couldn't read memory usage on this system.");
 
+        const string techCommand = "Get-CimInstance Win32_OperatingSystem | Select TotalVisibleMemorySize,FreePhysicalMemory";
         var percent = status.dwMemoryLoad;
+        var detail = $"{(status.ullTotalPhys - status.ullAvailPhys) / 1_073_741_824.0:0.0} GB in use of {status.ullTotalPhys / 1_073_741_824.0:0.0} GB installed.";
         return percent switch
         {
-            < 80 => new CheckResult(CheckStatus.Pass, $"RAM usage is normal ({percent}%)."),
-            < 92 => new CheckResult(CheckStatus.Warn, $"RAM usage is high ({percent}%) - several programs are competing for memory."),
-            _ => new CheckResult(CheckStatus.Bad, $"RAM usage is critically high ({percent}%)."),
+            < 80 => new CheckResult(CheckStatus.Pass, $"RAM usage is normal ({percent}%).", techCommand, detail),
+            < 92 => new CheckResult(CheckStatus.Warn, $"RAM usage is high ({percent}%) - several programs are competing for memory.", techCommand, detail),
+            _ => new CheckResult(CheckStatus.Bad, $"RAM usage is critically high ({percent}%).", techCommand, detail),
         };
     }
 
@@ -96,16 +99,18 @@ public static class SystemDiagnosticsService
             Thread.Sleep(500);
             var percent = Math.Min(counter.NextValue(), 100);
 
+            const string techCommand = "Get-Counter '\\PhysicalDisk(_Total)\\% Disk Time'";
+            var detail = $"{percent:0.0}% disk time, sampled over 500 ms.";
             return percent switch
             {
-                < 80 => new CheckResult(CheckStatus.Pass, "Disk activity is normal."),
-                < 95 => new CheckResult(CheckStatus.Warn, $"Disk activity is elevated ({percent:0}%)."),
-                _ => new CheckResult(CheckStatus.Bad, $"Disk activity is very high ({percent:0}%) - something is hammering the disk."),
+                < 80 => new CheckResult(CheckStatus.Pass, "Disk activity is normal.", techCommand, detail),
+                < 95 => new CheckResult(CheckStatus.Warn, $"Disk activity is elevated ({percent:0}%).", techCommand, detail),
+                _ => new CheckResult(CheckStatus.Bad, $"Disk activity is very high ({percent:0}%) - something is hammering the disk.", techCommand, detail),
             };
         }
         catch (Exception exception) when (exception is InvalidOperationException or UnauthorizedAccessException or Win32Exception)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't read disk activity on this system.");
+            return new CheckResult(CheckStatus.Warn, "Couldn't read disk activity on this system.", "Get-Counter '\\PhysicalDisk(_Total)\\% Disk Time'", CheckText.DescribeException(exception));
         }
     }
 
@@ -118,21 +123,33 @@ public static class SystemDiagnosticsService
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SoftwareDistribution", "Download");
             if (!Directory.Exists(path))
-                return new CheckResult(CheckStatus.Pass, "No leftover update files found.");
+                return new CheckResult(CheckStatus.Pass, "No leftover update files found.", "Get-ChildItem C:\\Windows\\SoftwareDistribution\\Download", "The download folder doesn't exist.");
 
             var sizeInGigabytes = new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length) / 1_073_741_824.0;
 
+            const string techCommand = "Get-ChildItem C:\\Windows\\SoftwareDistribution\\Download -Recurse | Measure-Object Length -Sum";
+            var detail = $"{path}: {sizeInGigabytes:0.00} GB.";
             return sizeInGigabytes switch
             {
-                < 1 => new CheckResult(CheckStatus.Pass, "No significant leftover update files found."),
-                < 3 => new CheckResult(CheckStatus.Warn, $"{sizeInGigabytes:0.#} GB of leftover update files found - may be worth clearing."),
-                _ => new CheckResult(CheckStatus.Bad, $"{sizeInGigabytes:0.#} GB of leftover update files found - likely causing issues."),
+                < 1 => new CheckResult(CheckStatus.Pass, "No significant leftover update files found.", techCommand, detail),
+                < 3 => new CheckResult(CheckStatus.Warn, $"{sizeInGigabytes:0.#} GB of leftover update files found - may be worth clearing.", techCommand, detail),
+                _ => new CheckResult(CheckStatus.Bad, $"{sizeInGigabytes:0.#} GB of leftover update files found - likely causing issues.", techCommand, detail),
             };
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't check for leftover update files.");
+            return new CheckResult(CheckStatus.Warn, "Couldn't check for leftover update files.", "Get-ChildItem C:\\Windows\\SoftwareDistribution\\Download", CheckText.DescribeException(exception));
         }
+    }
+
+    public static CheckResult CheckTimeSinceRestart()
+    {
+        var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        return PerformanceRules.JudgeTimeSinceRestart(uptime) with
+        {
+            TechCommand = "(Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime",
+            TechDetail = $"Uptime {(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m since the last full start.",
+        };
     }
 
     public static CheckResult CheckFreeDiskSpace()
@@ -141,38 +158,38 @@ public static class SystemDiagnosticsService
         if (fixedDrives.Count == 0)
             return new CheckResult(CheckStatus.Warn, "No fixed drives were found to check.");
 
-        var fullestDrive = fixedDrives.MinBy(drive => drive.AvailableFreeSpace / (double)drive.TotalSize)!;
-        var freePercent = 100.0 * fullestDrive.AvailableFreeSpace / fullestDrive.TotalSize;
-        var freeGigabytes = fullestDrive.AvailableFreeSpace / 1_073_741_824.0;
-
-        return freePercent switch
-        {
-            > 15 => new CheckResult(CheckStatus.Pass, "Plenty of free space available."),
-            > 5 => new CheckResult(CheckStatus.Warn, $"{fullestDrive.Name} is getting full - only {freeGigabytes:0.#} GB free."),
-            _ => new CheckResult(CheckStatus.Bad, $"{fullestDrive.Name} is nearly full - only {freeGigabytes:0.#} GB free."),
-        };
+        const string techCommand = "Get-Volume | Select DriveLetter,Size,SizeRemaining";
+        const double bytesPerGigabyte = 1_073_741_824.0;
+        var drives = fixedDrives.Select(drive => new DriveSpace(drive.Name, drive.AvailableFreeSpace / bytesPerGigabyte, drive.TotalSize / bytesPerGigabyte)).ToList();
+        var detail = string.Join("; ", drives.Select(drive => $"{drive.Name} {drive.FreeGigabytes:0.0} of {drive.TotalGigabytes:0.0} GB free"));
+        return DriveRules.JudgeFreeSpace(drives) with { TechCommand = techCommand, TechDetail = detail };
     }
 
     public static CheckResult CheckStartupPrograms()
     {
-        var count = CountRegistryRunEntries(Registry.CurrentUser) + CountRegistryRunEntries(Registry.LocalMachine);
+        const string techCommand = "Get-CimInstance Win32_StartupCommand | Select Name,Command,Location";
+        var currentUserEntries = CountRegistryRunEntries(Registry.CurrentUser);
+        var allUsersEntries = CountRegistryRunEntries(Registry.LocalMachine);
+        var folderEntries = 0;
 
         try
         {
             var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
             if (Directory.Exists(startupFolder))
-                count += Directory.GetFiles(startupFolder).Length;
+                folderEntries = Directory.GetFiles(startupFolder).Length;
         }
         catch (IOException)
         {
             // Startup folder unavailable - fall back to just the registry count.
         }
 
+        var count = currentUserEntries + allUsersEntries + folderEntries;
+        var detail = $"Run key (this user): {currentUserEntries}; Run key (all users): {allUsersEntries}; Startup folder: {folderEntries}.";
         return count switch
         {
-            <= 5 => new CheckResult(CheckStatus.Pass, $"{count} program{(count == 1 ? "" : "s")} launching at startup - that's reasonable."),
-            <= 10 => new CheckResult(CheckStatus.Warn, $"{count} programs are launching automatically at startup."),
-            _ => new CheckResult(CheckStatus.Bad, $"{count} programs are launching automatically at startup."),
+            <= 5 => new CheckResult(CheckStatus.Pass, $"{count} program{(count == 1 ? "" : "s")} launching at startup - that's reasonable.", techCommand, detail),
+            <= 10 => new CheckResult(CheckStatus.Warn, $"{count} programs are launching automatically at startup.", techCommand, detail),
+            _ => new CheckResult(CheckStatus.Bad, $"{count} programs are launching automatically at startup.", techCommand, detail),
         };
     }
 
@@ -186,24 +203,6 @@ public static class SystemDiagnosticsService
         catch (System.Security.SecurityException)
         {
             return 0;
-        }
-    }
-
-    public static CheckResult CheckWindowsUpdateService()
-    {
-        try
-        {
-            using var service = new ServiceController("wuauserv");
-            return service.Status switch
-            {
-                ServiceControllerStatus.Running => new CheckResult(CheckStatus.Pass, "The update service is running."),
-                ServiceControllerStatus.Stopped => new CheckResult(CheckStatus.Warn, "The update service is stopped."),
-                _ => new CheckResult(CheckStatus.Warn, $"The update service is currently {service.Status}."),
-            };
-        }
-        catch (InvalidOperationException)
-        {
-            return new CheckResult(CheckStatus.Warn, "Couldn't read the Windows Update service status.");
         }
     }
 
@@ -228,8 +227,7 @@ public static class SystemDiagnosticsService
         Thread.Sleep(sampleMilliseconds);
         var processorCount = Environment.ProcessorCount;
 
-        string? busiestName = null;
-        double busiestPercent = 0;
+        var usage = new List<(string Name, double Percent)>();
         foreach (var process in candidates)
         {
             if (!cpuTimeBefore.TryGetValue(process.Id, out var cpuBefore)) continue;
@@ -237,21 +235,20 @@ public static class SystemDiagnosticsService
             {
                 process.Refresh();
                 var cpuMilliseconds = (process.TotalProcessorTime - cpuBefore).TotalMilliseconds;
-                var cpuPercent = cpuMilliseconds / sampleMilliseconds / processorCount * 100.0;
-                if (cpuPercent > busiestPercent)
-                {
-                    busiestPercent = cpuPercent;
-                    busiestName = process.ProcessName;
-                }
+                usage.Add((process.ProcessName, cpuMilliseconds / sampleMilliseconds / processorCount * 100.0));
             }
             catch (Exception exception) when (exception is Win32Exception or InvalidOperationException) { /* elevated or already exited: skip */ }
         }
 
         foreach (var process in candidates) process.Dispose();
 
-        return busiestPercent > significantCpuPercent
-            ? new CheckResult(CheckStatus.Warn, $"\"{busiestName}\" is using significant CPU ({busiestPercent:0}%).")
-            : new CheckResult(CheckStatus.Pass, "Nothing unusual running in the background.");
+        const string techCommand = "Get-Process | Sort-Object CPU -Descending | Select -First 5 Name,CPU";
+        var busiest = usage.OrderByDescending(entry => entry.Percent).Take(5).ToList();
+        var detail = busiest.Count == 0 ? "No process CPU times could be read." : string.Join("; ", busiest.Select(entry => $"{entry.Name} {entry.Percent:0.0}%"));
+
+        return busiest.Count > 0 && busiest[0].Percent > significantCpuPercent
+            ? new CheckResult(CheckStatus.Warn, $"\"{busiest[0].Name}\" is using significant CPU ({busiest[0].Percent:0}%).", techCommand, detail)
+            : new CheckResult(CheckStatus.Pass, "Nothing unusual running in the background.", techCommand, detail);
     }
 
     private static bool IsSystemProcess(string name) =>

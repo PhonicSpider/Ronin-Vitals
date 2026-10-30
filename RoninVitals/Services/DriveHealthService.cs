@@ -10,7 +10,8 @@ public enum DriveHealthLevel
     Unknown
 }
 
-public sealed record DriveHealthResult(DriveHealthLevel Level, int TotalDisks, IReadOnlyList<string> ConcerningDisks);
+/// <param name="DiskSummaries">One "name: status" entry per physical disk, for Tech Mode.</param>
+public sealed record DriveHealthResult(DriveHealthLevel Level, int TotalDisks, IReadOnlyList<string> ConcerningDisks, IReadOnlyList<string>? DiskSummaries = null);
 
 /// <summary>
 /// Read-only physical-disk health via MSFT_PhysicalDisk.HealthStatus in the
@@ -32,6 +33,7 @@ public static class DriveHealthService
                 "SELECT FriendlyName, HealthStatus FROM MSFT_PhysicalDisk");
 
             var concerning = new List<string>();
+            var summaries = new List<string>();
             var total = 0;
             var worst = DriveHealthLevel.Healthy;
 
@@ -42,6 +44,7 @@ public static class DriveHealthService
                     total++;
                     var name = disk["FriendlyName"]?.ToString() ?? "Unknown disk";
                     var level = ToLevel(disk["HealthStatus"]);
+                    summaries.Add($"{name}: {level}");
 
                     if (level == DriveHealthLevel.Unhealthy)
                     {
@@ -56,7 +59,7 @@ public static class DriveHealthService
                 }
             }
 
-            return new DriveHealthResult(total == 0 ? DriveHealthLevel.Unknown : worst, total, concerning);
+            return new DriveHealthResult(total == 0 ? DriveHealthLevel.Unknown : worst, total, concerning, summaries);
         }
         catch (ManagementException)
         {
