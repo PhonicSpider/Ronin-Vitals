@@ -21,7 +21,7 @@ public sealed class SparkAreaFillConverter : IValueConverter
             return new PointCollection();
 
         var area = new PointCollection(points.Count + 2);
-        foreach (var p in points) area.Add(p);
+        foreach (var point in points) area.Add(point);
         area.Add(new System.Windows.Point(points[^1].X, CanvasHeight));
         area.Add(new System.Windows.Point(points[0].X, CanvasHeight));
         return area;

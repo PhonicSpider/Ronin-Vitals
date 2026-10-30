@@ -43,7 +43,7 @@ public sealed class SystemMetricsService
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
-    private static long ToTicks(FILETIME ft) => ((long)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    private static long ToTicks(FILETIME fileTime) => ((long)fileTime.dwHighDateTime << 32) | fileTime.dwLowDateTime;
 
     private long _lastIdleTicks;
     private long _lastTotalTicks;
@@ -92,15 +92,15 @@ public sealed class SystemMetricsService
     public VitalSample SampleNetwork()
     {
         var now = DateTime.UtcNow;
-        long bytes = 0;
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        long totalBytes = 0;
+        foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
         {
-            if (nic.OperationalStatus != OperationalStatus.Up) continue;
-            if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+            if (adapter.OperationalStatus != OperationalStatus.Up) continue;
+            if (adapter.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
             try
             {
-                var stats = nic.GetIPv4Statistics();
-                bytes += stats.BytesReceived + stats.BytesSent;
+                var statistics = adapter.GetIPv4Statistics();
+                totalBytes += statistics.BytesReceived + statistics.BytesSent;
             }
             catch (NetworkInformationException)
             {
@@ -110,23 +110,23 @@ public sealed class SystemMetricsService
 
         if (!_netWarm)
         {
-            _lastNetBytes = bytes;
+            _lastNetBytes = totalBytes;
             _lastNetSampleAt = now;
             _netWarm = true;
             return new VitalSample(0, "0.0 Mb/s");
         }
 
         var elapsedSeconds = (now - _lastNetSampleAt).TotalSeconds;
-        var deltaBytes = Math.Max(0, bytes - _lastNetBytes);
-        _lastNetBytes = bytes;
+        var bytesSinceLastSample = Math.Max(0, totalBytes - _lastNetBytes);
+        _lastNetBytes = totalBytes;
         _lastNetSampleAt = now;
 
-        var mbps = elapsedSeconds <= 0 ? 0 : deltaBytes * 8.0 / 1_000_000.0 / elapsedSeconds;
+        var megabitsPerSecond = elapsedSeconds <= 0 ? 0 : bytesSinceLastSample * 8.0 / 1_000_000.0 / elapsedSeconds;
 
-        // Soft-scaled onto the 0-100 sparkline gauge - 50 Mb/s reads as "full". Purely a
-        // display heuristic, not a real capacity reading.
-        var gauge = Math.Clamp(mbps / 50.0 * 100.0, 0, 100);
-        return new VitalSample(gauge, $"{mbps:0.0} Mb/s");
+        // Scaled onto the 0-100 sparkline: 50 Mb/s reads as "full". A display choice, not link capacity.
+        const double fullGaugeMegabitsPerSecond = 50.0;
+        var gauge = Math.Clamp(megabitsPerSecond / fullGaugeMegabitsPerSecond * 100.0, 0, 100);
+        return new VitalSample(gauge, $"{megabitsPerSecond:0.0} Mb/s");
     }
 
     /// <summary>"Days:Hours:Minutes:Seconds", zero-padded (e.g. 21 days, 10 hours, 52 minutes, 33 seconds is
@@ -141,8 +141,8 @@ public sealed class SystemMetricsService
 
     public IReadOnlyList<string> GetFixedDriveNames() =>
         DriveInfo.GetDrives()
-            .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
-            .Select(d => d.Name.TrimEnd('\\'))
+            .Where(drive => drive.DriveType == DriveType.Fixed && drive.IsReady)
+            .Select(drive => drive.Name.TrimEnd('\\'))
             .ToList();
 
     public VitalSample SampleDrive(string driveName)

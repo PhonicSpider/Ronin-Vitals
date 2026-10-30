@@ -81,23 +81,22 @@ public static class WebAccessRules
     public static List<HostsEntry> ParseHostsFile(string text)
     {
         var entries = new List<HostsEntry>();
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in text.Split('\n'))
         {
-            var line = rawLine;
-            var hash = line.IndexOf('#');
-            if (hash >= 0) line = line[..hash];
-            var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) continue;
+            var commentStart = line.IndexOf('#');
+            var content = commentStart >= 0 ? line[..commentStart] : line;
+            var fields = content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length < 2) continue;
 
-            var address = parts[0];
+            var address = fields[0];
             if (!IPAddress.TryParse(address, out _)) continue; // junk line, not a mapping
 
-            foreach (var host in parts.Skip(1))
+            foreach (var hostName in fields.Skip(1))
             {
-                if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) continue;
-                if (host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)) continue;
-                if (!host.Contains('.')) continue;
-                entries.Add(new HostsEntry(address, host));
+                if (hostName.Equals("localhost", StringComparison.OrdinalIgnoreCase)) continue;
+                if (hostName.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!hostName.Contains('.')) continue;
+                entries.Add(new HostsEntry(address, hostName));
             }
         }
         return entries;
@@ -114,17 +113,23 @@ public static class WebAccessRules
     /// </summary>
     public static ClockState ClassifyClockSkew(TimeSpan skew)
     {
-        var minutes = Math.Abs(skew.TotalMinutes);
-        return minutes <= 2 ? ClockState.Fine : minutes <= 10 ? ClockState.Drifting : ClockState.Wrong;
+        const int fineWithinMinutes = 2;
+        const int driftingWithinMinutes = 10;
+
+        var minutesOff = Math.Abs(skew.TotalMinutes);
+        return minutesOff <= fineWithinMinutes ? ClockState.Fine
+            : minutesOff <= driftingWithinMinutes ? ClockState.Drifting
+            : ClockState.Wrong;
     }
 
+    /// <summary>"5 minutes fast" or "2 hours slow": how far off a clock is, and which way. A negative skew is a fast clock.</summary>
     public static string DescribeSkew(TimeSpan skew)
     {
-        var abs = skew.Duration();
-        var amount = abs.TotalDays >= 1 ? $"{abs.TotalDays:0.#} days"
-            : abs.TotalHours >= 1 ? $"{abs.TotalHours:0.#} hours"
-            : abs.TotalMinutes >= 1 ? $"{abs.TotalMinutes:0.#} minutes"
-            : $"{abs.TotalSeconds:0} seconds";
+        var offBy = skew.Duration();
+        var amount = offBy.TotalDays >= 1 ? $"{offBy.TotalDays:0.#} days"
+            : offBy.TotalHours >= 1 ? $"{offBy.TotalHours:0.#} hours"
+            : offBy.TotalMinutes >= 1 ? $"{offBy.TotalMinutes:0.#} minutes"
+            : $"{offBy.TotalSeconds:0} seconds";
         return skew < TimeSpan.Zero ? $"{amount} fast" : $"{amount} slow";
     }
 
@@ -145,36 +150,38 @@ public static class WebAccessRules
     /// problem is on this side (connection, DNS, something blocking everything); if only some sites fail while the rest
     /// load fine, the problem is much more likely on those sites' side, or something on this PC blocking just them.
     /// </summary>
-    public static SiteSummary SummarizeSites(IReadOnlyList<SiteResult> results)
+    public static SiteSummary SummarizeSites(IReadOnlyList<SiteResult> siteResults)
     {
-        if (results.Count == 0)
+        const string everydayGroup = "General";
+        const int maxNamedSites = 4;
+
+        if (siteResults.Count == 0)
             return new SiteSummary(CheckStatus.Warn, "Couldn't test any sites.");
 
-        var failed = results.Where(r => r.Failed).ToList();
-        var serverErrors = results.Where(r => r.Outcome == SiteOutcome.ServerError).ToList();
-        var troubled = results.Where(r => r.Troubled).ToList();
+        var failedSites = siteResults.Where(site => site.Failed).ToList();
+        var serverErrorSites = siteResults.Where(site => site.Outcome == SiteOutcome.ServerError).ToList();
+        var troubledSites = siteResults.Where(site => site.Troubled).ToList();
 
-        if (failed.Count == results.Count)
+        if (failedSites.Count == siteResults.Count)
         {
-            var reason = results.All(r => r.Outcome == SiteOutcome.DnsFailed) ? "Every name lookup failed, which points at your DNS."
-                : results.All(r => r.Outcome == SiteOutcome.TlsFailed) ? "Every secure connection failed, which points at your clock or at security software inspecting your traffic."
-                : results.All(r => r.Outcome == SiteOutcome.TimedOut) ? "Every connection timed out, which points at your connection itself or something blocking all web traffic."
+            var reason = siteResults.All(site => site.Outcome == SiteOutcome.DnsFailed) ? "Every name lookup failed, which points at your DNS."
+                : siteResults.All(site => site.Outcome == SiteOutcome.TlsFailed) ? "Every secure connection failed, which points at your clock or at security software inspecting your traffic."
+                : siteResults.All(site => site.Outcome == SiteOutcome.TimedOut) ? "Every connection timed out, which points at your connection itself or something blocking all web traffic."
                 : "The failures point at your connection rather than at any one site.";
-            return new SiteSummary(CheckStatus.Bad, $"None of the {results.Count} sites and game services we tried would load. {reason} This isn't one site being down.");
+            return new SiteSummary(CheckStatus.Bad, $"None of the {siteResults.Count} sites and game services we tried would load. {reason} This isn't one site being down.");
         }
 
-        if (troubled.Count == 0)
-            return new SiteSummary(CheckStatus.Pass, $"All {results.Count} popular sites and game services loaded, so your connection is fine. If one site still won't load, that site is the likely problem.");
+        if (troubledSites.Count == 0)
+            return new SiteSummary(CheckStatus.Pass, $"All {siteResults.Count} popular sites and game services loaded, so your connection is fine. If one site still won't load, that site is the likely problem.");
 
-        var names = string.Join(", ", troubled.Take(4).Select(r => r.Name)) + (troubled.Count > 4 ? $" and {troubled.Count - 4} more" : "");
-        var general = results.Where(r => r.Group == "General").ToList();
-        var anyGeneralTroubled = general.Any(r => r.Troubled);
+        var troubledNames = CheckText.Examples(troubledSites.Select(site => site.Name), maxNamedSites);
+        var everydaySitesAffected = siteResults.Any(site => site.Group == everydayGroup && site.Troubled);
 
-        var verdict = anyGeneralTroubled
+        var verdict = everydaySitesAffected
             ? "Some everyday sites are failing while others load, which can mean a patchy connection or DNS."
             : "Everyday sites load fine, so your connection works. The ones that failed are most likely having trouble on their side, or something on this PC (a hosts-file entry, a firewall rule, security software) is blocking just them.";
-        var kind = serverErrors.Count == troubled.Count ? "answered with a server error" : "couldn't be reached";
-        return new SiteSummary(CheckStatus.Warn, $"{troubled.Count} of {results.Count} {kind}: {names}. {verdict}");
+        var problem = serverErrorSites.Count == troubledSites.Count ? "answered with a server error" : "couldn't be reached";
+        return new SiteSummary(CheckStatus.Warn, $"{troubledSites.Count} of {siteResults.Count} {problem}: {troubledNames}. {verdict}");
     }
 
     /// <summary>The captive-portal test: Windows' own connectivity page returns this exact text when the network is open.</summary>

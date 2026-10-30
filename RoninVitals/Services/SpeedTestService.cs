@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using RoninVitals.Models;
 
@@ -17,13 +18,16 @@ namespace RoninVitals.Services;
 public static class SpeedTestService
 {
     private const string DownloadTestUrl = "https://speed.cloudflare.com/__down?bytes=10000000"; // 10 MB cap
+    private const int SolidMegabitsPerSecond = 25;
+    private const int UsableMegabitsPerSecond = 5;
+    private const int ImplausiblyFastMilliseconds = 20; // a "download" this quick measured nothing
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(6);
 
     public static CheckResult CheckDownloadSpeed()
     {
         var buffer = new byte[81920];
-        long bytesRead = 0;
-        var sw = Stopwatch.StartNew();
+        long totalBytes = 0;
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
@@ -31,30 +35,29 @@ public static class SpeedTestService
             using var response = client.Send(new HttpRequestMessage(HttpMethod.Get, DownloadTestUrl), HttpCompletionOption.ResponseHeadersRead);
             using var stream = response.Content.ReadAsStream();
 
-            int read;
-            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-                bytesRead += read;
+            int bytesInChunk;
+            while ((bytesInChunk = stream.Read(buffer, 0, buffer.Length)) > 0)
+                totalBytes += bytesInChunk;
         }
-        catch
+        catch (Exception exception) when (exception is HttpRequestException or IOException or OperationCanceledException)
         {
-            // Timed out, connection dropped mid-download, or couldn't connect at all - fall
-            // through and judge by whatever bytesRead/elapsed accumulated before that happened.
+            // Timed out or dropped mid-download: judge by what arrived before that.
         }
-        sw.Stop();
+        stopwatch.Stop();
 
         var techCommand = $"Invoke-WebRequest '{DownloadTestUrl}'";
 
-        if (bytesRead == 0 || sw.Elapsed.TotalMilliseconds < 20)
+        if (totalBytes == 0 || stopwatch.Elapsed.TotalMilliseconds < ImplausiblyFastMilliseconds)
             return new CheckResult(CheckStatus.Warn, "Couldn't run a speed test - check your internet connection.", techCommand, "0 bytes received before failure/timeout.");
 
-        var mbps = bytesRead * 8.0 / 1_000_000.0 / sw.Elapsed.TotalSeconds;
-        var techDetail = $"{bytesRead:N0} bytes in {sw.ElapsedMilliseconds} ms = {mbps:F2} Mb/s";
+        var megabitsPerSecond = totalBytes * 8.0 / 1_000_000.0 / stopwatch.Elapsed.TotalSeconds;
+        var techDetail = $"{totalBytes:N0} bytes in {stopwatch.ElapsedMilliseconds} ms = {megabitsPerSecond:F2} Mb/s";
 
-        return mbps switch
+        return megabitsPerSecond switch
         {
-            >= 25 => new CheckResult(CheckStatus.Pass, $"Getting {mbps:F0} Mb/s down - solid for typical browsing and streaming.", techCommand, techDetail),
-            >= 5 => new CheckResult(CheckStatus.Warn, $"Getting {mbps:F0} Mb/s down - usable, but slow for HD streaming or multiple devices at once.", techCommand, techDetail),
-            _ => new CheckResult(CheckStatus.Bad, $"Getting {mbps:F1} Mb/s down - that's slow enough to notice on most everyday tasks.", techCommand, techDetail),
+            >= SolidMegabitsPerSecond => new CheckResult(CheckStatus.Pass, $"Getting {megabitsPerSecond:F0} Mb/s down - solid for typical browsing and streaming.", techCommand, techDetail),
+            >= UsableMegabitsPerSecond => new CheckResult(CheckStatus.Warn, $"Getting {megabitsPerSecond:F0} Mb/s down - usable, but slow for HD streaming or multiple devices at once.", techCommand, techDetail),
+            _ => new CheckResult(CheckStatus.Bad, $"Getting {megabitsPerSecond:F1} Mb/s down - that's slow enough to notice on most everyday tasks.", techCommand, techDetail),
         };
     }
 }
