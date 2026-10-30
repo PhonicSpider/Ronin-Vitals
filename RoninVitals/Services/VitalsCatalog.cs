@@ -301,18 +301,18 @@ public static class VitalsCatalog
         {
             Id = "scanboth", Title = "Run both scans",
             Subtitle = "Microsoft Defender first, then Vitals' own check, one after the other.",
-            Checks = scans.SelectMany(s => s.Checks).ToList(),
+            Checks = scans.SelectMany(scan => scan.Checks).ToList(),
         });
         return scans;
     }
 
-    public static Section GetSection(SectionKey key) => Sections.First(s => s.Key == key);
+    public static Section GetSection(SectionKey key) => Sections.First(section => section.Key == key);
 
     /// <summary>Backs the "Reading drive health status" / "Checking drive health" checks - read-only, see DriveHealthService.</summary>
     private static CheckResult CheckDriveHealth()
     {
         var health = DriveHealthService.GetOverallHealth();
-        var partitionCount = DriveInfo.GetDrives().Count(d => d.DriveType == DriveType.Fixed && d.IsReady);
+        var partitionCount = DriveInfo.GetDrives().Count(drive => drive.DriveType == DriveType.Fixed && drive.IsReady);
 
         return health.Level switch
         {

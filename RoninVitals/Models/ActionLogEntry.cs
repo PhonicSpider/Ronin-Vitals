@@ -30,10 +30,10 @@ public sealed partial class ActionLogEntry : ObservableObject
 
         try
         {
-            var ok = await UndoAction!();
-            if (ok) IsUndone = true;
+            var undoSucceeded = await UndoAction!();
+            if (undoSucceeded) IsUndone = true;
             else UndoFailed = true;
-            return ok;
+            return undoSucceeded;
         }
         catch
         {

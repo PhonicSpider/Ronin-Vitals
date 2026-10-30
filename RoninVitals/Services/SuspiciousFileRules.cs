@@ -65,8 +65,8 @@ public static class SuspiciousFileRules
         var text = Environment.ExpandEnvironmentVariables(command.Trim());
         if (text.StartsWith('"'))
         {
-            var end = text.IndexOf('"', 1);
-            return end > 1 ? text[1..end] : null;
+            var closingQuote = text.IndexOf('"', 1);
+            return closingQuote > 1 ? text[1..closingQuote] : null;
         }
 
         var match = ExecutableInCommand.Match(text);

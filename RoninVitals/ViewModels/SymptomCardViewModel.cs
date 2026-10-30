@@ -18,7 +18,7 @@ public partial class SymptomCardViewModel : ObservableObject
         _requestExpand = requestExpand;
         _requestCollapse = requestCollapse;
         Checks = new ObservableCollection<CheckItemViewModel>(
-            symptom.Checks.Select(c => new CheckItemViewModel(c)));
+            symptom.Checks.Select(check => new CheckItemViewModel(check)));
     }
 
     public string Id => _symptom.Id;
@@ -46,8 +46,7 @@ public partial class SymptomCardViewModel : ObservableObject
 
     [ObservableProperty] private bool _isTechConsoleVisible;
 
-    /// <summary>How long after a diagnostic run starts the console panel zooms in - the owner's
-    /// spec was "a few moments after the diagnostic box comes up", not instant.</summary>
+    /// <summary>How long after a diagnostic run starts before the Tech Mode console zooms in.</summary>
     public static TimeSpan TechConsoleRevealDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>Set by the "Gathering information..." pre-flight step (see GatherInformationAsync)

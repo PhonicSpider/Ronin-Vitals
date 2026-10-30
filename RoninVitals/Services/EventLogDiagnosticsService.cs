@@ -66,9 +66,9 @@ public static class EventLogDiagnosticsService
         {
             return new CheckResult(CheckStatus.Pass, "No Wi-Fi connection history is recorded on this PC - nothing to check here.", techCommand, $"Log '{log}' not found.");
         }
-        catch (EventLogException ex)
+        catch (EventLogException exception)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't read your Wi-Fi connection history.", techCommand, $"EventLogException: {ex.Message}");
+            return new CheckResult(CheckStatus.Warn, "Couldn't read your Wi-Fi connection history.", techCommand, $"EventLogException: {exception.Message}");
         }
         catch (UnauthorizedAccessException)
         {

@@ -30,10 +30,7 @@ public partial class HomeViewModel : ObservableObject
     private void OpenDrivers() => _navigateToDrivers();
 
     /// <summary>
-    /// A standalone safety checkpoint, independent of any specific fix - the same pattern
-    /// utilities like Disk Cleanup use ("create a restore point before cleaning"). Goes through
-    /// the same ConfirmationRequired path any future fix would, so it's the one place this
-    /// session's elevation/UAC flow can be verified live without inventing a real system change.
+    /// A standalone safety checkpoint, independent of any fix. Uses the same ConfirmationRequired path a risky fix would.
     /// </summary>
     [RelayCommand]
     private async Task CreateRestorePoint()

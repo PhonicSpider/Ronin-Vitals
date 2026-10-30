@@ -54,9 +54,9 @@ public partial class TechConsoleViewModel : ObservableObject, IDisposable
                 Note = $"Result: {Summarize(output)}",
             });
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            Lines.Add(new ConsoleLine(ConsoleLineKind.Output, $"Error: {ex.Message}"));
+            Lines.Add(new ConsoleLine(ConsoleLineKind.Output, $"Error: {exception.Message}"));
         }
         finally
         {

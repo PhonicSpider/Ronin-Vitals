@@ -18,7 +18,7 @@ public partial class SymptomsViewModel : ObservableObject
         Headline = section.Headline;
 
         Cards = new ObservableCollection<SymptomCardViewModel>(
-            section.Symptoms.Select(s => new SymptomCardViewModel(s, ExpandCard, CollapseExpanded)));
+            section.Symptoms.Select(symptom => new SymptomCardViewModel(symptom, ExpandCard, CollapseExpanded)));
     }
 
     public string SectionLabel { get; }

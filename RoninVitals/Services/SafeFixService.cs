@@ -36,13 +36,13 @@ public static class SafeFixService
         {
             applied = await apply();
         }
-        catch (FixDeclinedException ex)
+        catch (FixDeclinedException exception)
         {
-            return new FixOutcome(false, ex.Message);
+            return new FixOutcome(false, exception.Message);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new FixOutcome(false, $"Something went wrong applying the fix: {ex.Message}");
+            return new FixOutcome(false, $"Something went wrong applying the fix: {exception.Message}");
         }
 
         if (!applied)

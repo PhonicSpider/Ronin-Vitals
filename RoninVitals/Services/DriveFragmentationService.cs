@@ -56,13 +56,13 @@ public static class DriveFragmentationService
         {
             process = Process.Start(psi)!;
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) // ERROR_CANCELLED - user clicked "No"
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223) // ERROR_CANCELLED - user clicked "No"
         {
             return new CheckResult(CheckStatus.Warn, $"You declined the administrator prompt, so fragmentation couldn't be checked on drive {driveLetter}.");
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new CheckResult(CheckStatus.Warn, $"Couldn't check fragmentation: {ex.Message}");
+            return new CheckResult(CheckStatus.Warn, $"Couldn't check fragmentation: {exception.Message}");
         }
 
         process.WaitForExit();
@@ -89,7 +89,7 @@ public static class DriveFragmentationService
             using var volumes = searcher.Get();
 
             ManagementObject? volume = null;
-            foreach (ManagementObject v in volumes) { volume = v; break; }
+            foreach (ManagementObject firstVolume in volumes) { volume = firstVolume; break; }
             if (volume is null) return 2;
 
             using (volume)
@@ -119,7 +119,7 @@ public static class DriveFragmentationService
     /// associator chain a second time.</summary>
     private static List<string> GetHddDriveLetters() =>
         EnvironmentInfoService.GatherDriveInventory()
-            .Where(d => d.MediaType == DriveMediaType.Hdd)
-            .SelectMany(d => d.DriveLetters)
+            .Where(drive => drive.MediaType == DriveMediaType.Hdd)
+            .SelectMany(drive => drive.DriveLetters)
             .ToList();
 }

@@ -45,13 +45,13 @@ public static class RestorePointService
         {
             process = Process.Start(psi)!;
         }
-        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223) // ERROR_CANCELLED - user clicked "No"
+        catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode == 1223) // ERROR_CANCELLED - user clicked "No"
         {
             return new RestorePointResult(RestorePointOutcome.ElevationDeclined, "You declined the administrator prompt, so no restore point was created.");
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new RestorePointResult(RestorePointOutcome.Failed, $"Couldn't start the elevated helper: {ex.Message}");
+            return new RestorePointResult(RestorePointOutcome.Failed, $"Couldn't start the elevated helper: {exception.Message}");
         }
 
         await process.WaitForExitAsync();
@@ -88,7 +88,7 @@ public static class RestorePointService
             // ManagementException below rather than a return value in practice, but check anyway.
             return returnValue == 0 ? 0 : 1;
         }
-        catch (ManagementException ex) when (ex.Message.Contains("disabled", StringComparison.OrdinalIgnoreCase))
+        catch (ManagementException exception) when (exception.Message.Contains("disabled", StringComparison.OrdinalIgnoreCase))
         {
             return 2;
         }

@@ -41,7 +41,7 @@ public partial class VitalMetricViewModel : ObservableObject
     public void Sample()
     {
         var result = _sample();
-        for (var i = 0; i < _values.Length - 1; i++) _values[i] = _values[i + 1];
+        for (var index = 0; index < _values.Length - 1; index++) _values[index] = _values[index + 1];
         _values[^1] = Math.Clamp(result.GaugeValue, 0, 100);
 
         ValueText = result.DisplayText;
@@ -51,11 +51,11 @@ public partial class VitalMetricViewModel : ObservableObject
     private PointCollection BuildPoints()
     {
         var points = new PointCollection(SampleCount);
-        for (var i = 0; i < _values.Length; i++)
+        for (var index = 0; index < _values.Length; index++)
         {
-            var x = i / (double)(_values.Length - 1) * SparkWidth;
-            var y = SparkHeight - _values[i] / 100.0 * SparkHeight;
-            points.Add(new Point(x, y));
+            var pointX = index / (double)(_values.Length - 1) * SparkWidth;
+            var pointY = SparkHeight - _values[index] / 100.0 * SparkHeight;
+            points.Add(new Point(pointX, pointY));
         }
         return points;
     }

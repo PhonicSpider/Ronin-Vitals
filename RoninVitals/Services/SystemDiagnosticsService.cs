@@ -103,7 +103,7 @@ public static class SystemDiagnosticsService
                 _ => new CheckResult(CheckStatus.Bad, $"Disk activity is very high ({percent:0}%) - something is hammering the disk."),
             };
         }
-        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or Win32Exception)
+        catch (Exception exception) when (exception is InvalidOperationException or UnauthorizedAccessException or Win32Exception)
         {
             return new CheckResult(CheckStatus.Warn, "Couldn't read disk activity on this system.");
         }
@@ -120,16 +120,16 @@ public static class SystemDiagnosticsService
             if (!Directory.Exists(path))
                 return new CheckResult(CheckStatus.Pass, "No leftover update files found.");
 
-            var sizeGb = new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) / 1_073_741_824.0;
+            var sizeInGigabytes = new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length) / 1_073_741_824.0;
 
-            return sizeGb switch
+            return sizeInGigabytes switch
             {
                 < 1 => new CheckResult(CheckStatus.Pass, "No significant leftover update files found."),
-                < 3 => new CheckResult(CheckStatus.Warn, $"{sizeGb:0.#} GB of leftover update files found - may be worth clearing."),
-                _ => new CheckResult(CheckStatus.Bad, $"{sizeGb:0.#} GB of leftover update files found - likely causing issues."),
+                < 3 => new CheckResult(CheckStatus.Warn, $"{sizeInGigabytes:0.#} GB of leftover update files found - may be worth clearing."),
+                _ => new CheckResult(CheckStatus.Bad, $"{sizeInGigabytes:0.#} GB of leftover update files found - likely causing issues."),
             };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return new CheckResult(CheckStatus.Warn, "Couldn't check for leftover update files.");
         }
@@ -137,19 +137,19 @@ public static class SystemDiagnosticsService
 
     public static CheckResult CheckFreeDiskSpace()
     {
-        var drives = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).ToList();
-        if (drives.Count == 0)
+        var fixedDrives = DriveInfo.GetDrives().Where(drive => drive.DriveType == DriveType.Fixed && drive.IsReady).ToList();
+        if (fixedDrives.Count == 0)
             return new CheckResult(CheckStatus.Warn, "No fixed drives were found to check.");
 
-        var worst = drives.MinBy(d => d.AvailableFreeSpace / (double)d.TotalSize)!;
-        var freePercent = 100.0 * worst.AvailableFreeSpace / worst.TotalSize;
-        var freeGb = worst.AvailableFreeSpace / 1_073_741_824.0;
+        var fullestDrive = fixedDrives.MinBy(drive => drive.AvailableFreeSpace / (double)drive.TotalSize)!;
+        var freePercent = 100.0 * fullestDrive.AvailableFreeSpace / fullestDrive.TotalSize;
+        var freeGigabytes = fullestDrive.AvailableFreeSpace / 1_073_741_824.0;
 
         return freePercent switch
         {
             > 15 => new CheckResult(CheckStatus.Pass, "Plenty of free space available."),
-            > 5 => new CheckResult(CheckStatus.Warn, $"{worst.Name} is getting full - only {freeGb:0.#} GB free."),
-            _ => new CheckResult(CheckStatus.Bad, $"{worst.Name} is nearly full - only {freeGb:0.#} GB free."),
+            > 5 => new CheckResult(CheckStatus.Warn, $"{fullestDrive.Name} is getting full - only {freeGigabytes:0.#} GB free."),
+            _ => new CheckResult(CheckStatus.Bad, $"{fullestDrive.Name} is nearly full - only {freeGigabytes:0.#} GB free."),
         };
     }
 
@@ -210,44 +210,47 @@ public static class SystemDiagnosticsService
     /// <summary>Blocks briefly (~400ms) to sample a delta - only call from a background thread.</summary>
     public static CheckResult CheckTopCpuConsumer()
     {
-        var currentPid = Environment.ProcessId;
+        const int sampleMilliseconds = 400;
+        const int significantCpuPercent = 40;
+
+        var ownProcessId = Environment.ProcessId;
         var candidates = Process.GetProcesses()
-            .Where(p => p.Id != currentPid && !IsSystemProcess(p.ProcessName))
+            .Where(process => process.Id != ownProcessId && !IsSystemProcess(process.ProcessName))
             .ToList();
 
-        var before = new Dictionary<int, TimeSpan>();
-        foreach (var p in candidates)
+        var cpuTimeBefore = new Dictionary<int, TimeSpan>();
+        foreach (var process in candidates)
         {
-            try { before[p.Id] = p.TotalProcessorTime; }
-            catch { /* inaccessible (elevated/exited) process - skip it */ }
+            try { cpuTimeBefore[process.Id] = process.TotalProcessorTime; }
+            catch (Exception exception) when (exception is Win32Exception or InvalidOperationException) { /* elevated or already exited: skip */ }
         }
 
-        Thread.Sleep(400);
+        Thread.Sleep(sampleMilliseconds);
         var processorCount = Environment.ProcessorCount;
 
-        string? topName = null;
-        double topPercent = 0;
-        foreach (var p in candidates)
+        string? busiestName = null;
+        double busiestPercent = 0;
+        foreach (var process in candidates)
         {
-            if (!before.TryGetValue(p.Id, out var beforeCpu)) continue;
+            if (!cpuTimeBefore.TryGetValue(process.Id, out var cpuBefore)) continue;
             try
             {
-                p.Refresh();
-                var deltaMs = (p.TotalProcessorTime - beforeCpu).TotalMilliseconds;
-                var percent = deltaMs / 400.0 / processorCount * 100.0;
-                if (percent > topPercent)
+                process.Refresh();
+                var cpuMilliseconds = (process.TotalProcessorTime - cpuBefore).TotalMilliseconds;
+                var cpuPercent = cpuMilliseconds / sampleMilliseconds / processorCount * 100.0;
+                if (cpuPercent > busiestPercent)
                 {
-                    topPercent = percent;
-                    topName = p.ProcessName;
+                    busiestPercent = cpuPercent;
+                    busiestName = process.ProcessName;
                 }
             }
-            catch { /* inaccessible (elevated/exited) process - skip it */ }
+            catch (Exception exception) when (exception is Win32Exception or InvalidOperationException) { /* elevated or already exited: skip */ }
         }
 
-        foreach (var p in candidates) p.Dispose();
+        foreach (var process in candidates) process.Dispose();
 
-        return topPercent > 40
-            ? new CheckResult(CheckStatus.Warn, $"\"{topName}\" is using significant CPU ({topPercent:0}%).")
+        return busiestPercent > significantCpuPercent
+            ? new CheckResult(CheckStatus.Warn, $"\"{busiestName}\" is using significant CPU ({busiestPercent:0}%).")
             : new CheckResult(CheckStatus.Pass, "Nothing unusual running in the background.");
     }
 

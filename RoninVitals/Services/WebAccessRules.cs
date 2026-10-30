@@ -20,20 +20,20 @@ public static class WebAccessRules
     }
 
     /// <summary>A standard recursive DNS query for an A (IPv4) record, as defined in RFC 1035.</summary>
-    public static byte[] BuildDnsQuery(string name, ushort id)
+    public static byte[] BuildDnsQuery(string hostName, ushort transactionId)
     {
         var packet = new List<byte>
         {
-            (byte)(id >> 8), (byte)id,   // transaction id
+            (byte)(transactionId >> 8), (byte)transactionId,
             0x01, 0x00,                  // flags: recursion desired
             0x00, 0x01,                  // one question
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // no answer/authority/additional records
         };
 
-        foreach (var label in name.TrimEnd('.').Split('.'))
+        foreach (var label in hostName.TrimEnd('.').Split('.'))
         {
             var bytes = Encoding.ASCII.GetBytes(label);
-            if (bytes.Length is 0 or > 63) throw new ArgumentException($"'{name}' is not a valid host name.", nameof(name));
+            if (bytes.Length is 0 or > 63) throw new ArgumentException($"'{hostName}' is not a valid host name.", nameof(hostName));
             packet.Add((byte)bytes.Length);
             packet.AddRange(bytes);
         }
@@ -46,9 +46,9 @@ public static class WebAccessRules
     public static DnsReply ParseDnsReply(byte[] data, ushort expectedId)
     {
         if (data.Length < 12) return new DnsReply(false, -1, 0);
-        var id = (ushort)((data[0] << 8) | data[1]);
+        var transactionId = (ushort)((data[0] << 8) | data[1]);
         var isResponse = (data[2] & 0x80) != 0;
-        if (id != expectedId || !isResponse) return new DnsReply(false, -1, 0);
+        if (transactionId != expectedId || !isResponse) return new DnsReply(false, -1, 0);
 
         var responseCode = data[3] & 0x0F;           // 0 = ok, 3 = name does not exist, 2 = server failure, 5 = refused
         var answers = (data[6] << 8) | data[7];
@@ -75,8 +75,7 @@ public static class WebAccessRules
     /// <summary>
     /// The active (non-comment) lines of a hosts file, one entry per host name. Ignores the normal built-in
     /// localhost lines, the ".internal" names Docker Desktop and WSL add, and single-word names such as
-    /// "view-localhost": a name with no dot is a local alias that nobody could browse to, so it isn't blocking
-    /// a website (found on a real machine, where one such alias made the check cry wolf).
+    /// "view-localhost": a name with no dot is a local alias nobody could browse to, not a blocked website.
     /// </summary>
     public static List<HostsEntry> ParseHostsFile(string text)
     {

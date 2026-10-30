@@ -82,19 +82,19 @@ public partial class DriversViewModel : ObservableObject
     {
         var drivers = VitalsCatalog.Drivers;
         UpdateCount = drivers.Count;
-        VendorCount = drivers.Select(d => d.Vendor).Distinct().Count();
+        VendorCount = drivers.Select(driver => driver.Vendor).Distinct().Count();
 
-        foreach (var vendor in drivers.Select(d => d.Vendor).Distinct())
+        foreach (var vendor in drivers.Select(driver => driver.Vendor).Distinct())
         {
             var rows = new ObservableCollection<DriverRowViewModel>(
-                drivers.Where(d => d.Vendor == vendor)
-                       .Select(d => new DriverRowViewModel(d, UpdateSelectedCount)));
+                drivers.Where(driver => driver.Vendor == vendor)
+                       .Select(driver => new DriverRowViewModel(driver, UpdateSelectedCount)));
             foreach (var row in rows) _allRows.Add(row);
             VendorGroups.Add(new VendorGroupViewModel { VendorName = vendor, Rows = rows });
         }
     }
 
-    private void UpdateSelectedCount() => SelectedCount = _allRows.Count(r => r.IsChecked);
+    private void UpdateSelectedCount() => SelectedCount = _allRows.Count(row => row.IsChecked);
 
     [RelayCommand]
     private async Task UpdateSelectedAsync()
@@ -102,9 +102,9 @@ public partial class DriversViewModel : ObservableObject
         if (SelectedCount == 0 || IsUpdating) return;
         IsUpdating = true;
         await Task.Delay(1400);
-        foreach (var row in _allRows.Where(r => r.IsChecked))
+        foreach (var checkedRow in _allRows.Where(row => row.IsChecked))
         {
-            row.MarkUpdated();
+            checkedRow.MarkUpdated();
         }
         await Task.Delay(900);
         IsUpdating = false;

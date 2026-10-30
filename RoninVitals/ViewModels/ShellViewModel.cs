@@ -85,8 +85,8 @@ public partial class ShellViewModel : ObservableObject
 
     private async void NavigateToDrivers()
     {
-        var vm = new DriversViewModel(NavigateHome);
-        CurrentView = vm;
-        await vm.StartScanAsync();
+        var driversViewModel = new DriversViewModel(NavigateHome);
+        CurrentView = driversViewModel;
+        await driversViewModel.StartScanAsync();
     }
 }
