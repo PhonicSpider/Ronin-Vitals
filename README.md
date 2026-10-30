@@ -4,7 +4,7 @@ A Windows diagnostic and repair tool for people who are not technical. Pick what
 
 A **Tech Mode** switch reveals the same results the way a technician wants to see them: the exact command behind each check and the raw numbers, plus a live PowerShell console.
 
-> **Status: early and under active development.** Some symptom cards have been reviewed end to end and use real checks only. Others still contain placeholder results. See [What works today](#what-works-today) for exactly which.
+> **Status: early and under active development.** Every symptom card now runs real checks, with guidance for each result. See [What works today](#what-works-today) for what was verified how.
 
 ![Home screen](docs/screenshots/home.png)
 
@@ -43,30 +43,33 @@ Neither option deletes or moves anything. Defender handles what it is sure about
 
 ## What works today
 
-Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. The cards are being reviewed one at a time, and four are finished (all of Network). The separate **Scan suspicious files** screen is also finished: all of its checks are real. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
+Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. Every check on every card looks at your PC for real; nothing shows a made-up result. The separate **Scan suspicious files** screen works the same way. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
 
-**Placeholder checks do not look at your PC.** A check that is not yet real shows a fixed example result, so it can say something that is not true of your machine. Treat those as demo content. They are listed below so you can tell them apart.
-
-| Card | State |
+| Card | Checks |
 | --- | --- |
-| Network: My internet feels slow | **Finished.** All 8 checks are real. |
-| Network: I can't get online at all | **Finished.** All 5 checks are real. |
-| Network: Wi-Fi keeps dropping | **Finished.** All 6 checks are real. |
-| Network: A website or game won't load | **Finished.** All 7 checks are real. |
-| Hardware: My computer feels slow | All real (CPU, memory, disk activity, startup programs, fragmentation). Not yet reviewed for missing causes. |
-| Hardware: A drive might be failing | All real (drive health, free space, disk errors). Not yet reviewed. |
-| Hardware: Not sure - check everything | 3 real, 1 placeholder (temperatures). |
-| Hardware: Fans are loud or it's overheating | **All placeholders.** |
-| Software: A program keeps crashing | 1 real (crash log), 2 placeholders. |
-| Software: Something's using too much CPU or RAM | 1 real (top CPU users), 1 placeholder. |
-| Software: Computer won't start up properly | **All placeholders.** |
-| System: Windows won't update | All real (update service, disk space, stuck update files). Not yet reviewed. |
-| System: General health check | 2 real (update status, recent errors), 1 placeholder (system files). |
-| System: Settings keep resetting or acting weird | **All placeholders.** |
+| Network: My internet feels slow | 8 |
+| Network: I can't get online at all | 5 |
+| Network: Wi-Fi keeps dropping | 6 |
+| Network: A website or game won't load | 7 |
+| Hardware: My computer feels slow | 9: CPU, memory, disk activity, startup programs, fragmentation, free space, power plan, CPU slowdowns, time since a full restart |
+| Hardware: Fans are loud or it's overheating | 6: temperature, CPU slowdowns, fans, CPU load, busiest program, power plan |
+| Hardware: A drive might be failing | 5: Windows' health verdict, wear and temperature, free space, read/write errors, disk-check flag |
+| Hardware: Not sure - check everything | 5: CPU, memory, drive health, temperature, CPU slowdowns |
+| Software: A program keeps crashing | 4: names the program that crashed or froze most, Windows file damage, waiting updates, memory |
+| Software: Computer won't start up properly | 6: start-up time, unexpected shutdowns and blue screens, pending restart, recovery tools, disk-check flag, start-up programs |
+| Software: Something's using too much CPU or RAM | 4: busiest program, biggest memory user, frozen programs, overall memory |
+| System: Windows won't update | 6: update services, room on the Windows drive, stuck update files, pending restart, failed updates (with the error explained), waiting updates |
+| System: Settings keep resetting or acting weird | 4: system file scan, Windows' repair store, user profile, settings locked by policy |
+| System: General health check | 6: system files, update services, waiting updates, pending restart, recent errors, room on the Windows drive |
 
-Some "fix" buttons on unreviewed cards are not wired to anything yet. The driver-update screen is also a demo: it does not install anything.
+A few things worth knowing about what the checks can and cannot see:
 
-A few checks are placeholders on purpose, because a confidently wrong answer is worse than none. CPU temperature is the main example: reading it accurately needs a kernel driver, which is a bigger trust decision than this project has made so far.
+- **Temperature is a motherboard sensor, not the CPU core.** Reading the real CPU temperature needs a kernel driver, which is a bigger trust decision than this project has made so far. The check says so in its result, and the throttling check (Windows' own record of the CPU being slowed down) is the better signal.
+- **Windows can't read fan speed** on most PCs. The fan check reports what Windows lists, says what it cannot see, and the fix button explains how to check fans by ear and clean them.
+- **Some checks need administrator rights:** the system file scan, Windows' repair store check, the disk-check flag and the drive wear counters. The app asks for administrator rights when it starts, so they normally just work. If it is ever run without them, those checks say so instead of guessing. The scan, repair-store, disk-flag and wear checks have so far been verified with sample tool output in unit tests; the other checks have also been run against a real PC.
+- **Most fix buttons explain what to do rather than doing it.** A button only changes something when the change is small and safe (see Safety below). Repairs such as clearing the Windows Update cache or running DISM are explained step by step instead, because Vitals cannot undo them.
+
+The driver-update screen is a demo: it does not install anything.
 
 Some things the checks do that go beyond a simple "is it on":
 
