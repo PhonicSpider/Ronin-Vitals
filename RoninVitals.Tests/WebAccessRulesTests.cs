@@ -104,7 +104,7 @@ public class WebAccessRulesTests
     public void ParseHostsFile_OneLineCanNameSeveralHosts()
     {
         var entries = ParseHostsFile("0.0.0.0 a.example.com b.example.com   c.example.com\n");
-        Assert.Equal(new[] { "a.example.com", "b.example.com", "c.example.com" }, entries.Select(e => e.Host));
+        Assert.Equal(new[] { "a.example.com", "b.example.com", "c.example.com" }, entries.Select(entry => entry.Host));
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class WebAccessRulesTests
         var tls = SummarizeSites(Everything(SiteOutcome.TlsFailed, SiteOutcome.TlsFailed));
         var timeout = SummarizeSites(Everything(SiteOutcome.TimedOut, SiteOutcome.TimedOut));
 
-        Assert.All(new[] { dns, tls, timeout }, s => Assert.Equal(CheckStatus.Bad, s.Status));
+        Assert.All(new[] { dns, tls, timeout }, summary => Assert.Equal(CheckStatus.Bad, summary.Status));
         Assert.Contains("DNS", dns.Text);
         Assert.Contains("clock", tls.Text);
         Assert.Contains("timed out", timeout.Text);
@@ -221,7 +221,7 @@ public class WebAccessRulesTests
     [Fact]
     public void SummarizeSites_LongListsAreShortenedWithACount()
     {
-        var results = Enumerable.Range(1, 8).Select(i => Site($"Site{i}", "Gaming", SiteOutcome.TimedOut)).ToList();
+        var results = Enumerable.Range(1, 8).Select(number => Site($"Site{number}", "Gaming", SiteOutcome.TimedOut)).ToList();
         results.Add(Site("Google", "General", SiteOutcome.Loaded));
 
         var summary = SummarizeSites(results);

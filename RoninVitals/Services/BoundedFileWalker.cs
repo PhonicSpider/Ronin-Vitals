@@ -56,7 +56,7 @@ internal static class BoundedFileWalker
                 yield return file;
             }
 
-            foreach (var subfolder in subfolders.Where(subfolder => !IsLink(subfolder)))
+            foreach (var subfolder in subfolders.Where(candidate => !IsLink(candidate)))
                 pending.Push((subfolder, depth + 1));
         }
     }

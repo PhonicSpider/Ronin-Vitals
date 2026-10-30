@@ -12,9 +12,9 @@ public class SymptomCardViewModelTests
         Subtitle = "Test subtitle",
         IsCatchAll = isCatchAll,
         Checks = Enumerable.Range(0, checkCount)
-            .Select(i => new CheckDefinition
+            .Select(number => new CheckDefinition
             {
-                Label = $"Check {i}",
+                Label = $"Check {number}",
                 ScriptedStatus = CheckStatus.Pass,
                 ResultText = "ok",
                 RealCheck = () => new CheckResult(CheckStatus.Pass, "ok"),
@@ -28,14 +28,14 @@ public class SymptomCardViewModelTests
     public void Properties_ProjectFromSymptom()
     {
         var symptom = MakeSymptom(checkCount: 3, isCatchAll: true);
-        var vm = new SymptomCardViewModel(symptom, _ => { }, () => { });
+        var viewModel = new SymptomCardViewModel(symptom, _ => { }, () => { });
 
-        Assert.Equal("test-symptom", vm.Id);
-        Assert.Equal("Test symptom", vm.Title);
-        Assert.Equal("Test subtitle", vm.Subtitle);
-        Assert.True(vm.IsCatchAll);
-        Assert.Equal(3, vm.CheckCount);
-        Assert.Equal(3, vm.Checks.Count);
+        Assert.Equal("test-symptom", viewModel.Id);
+        Assert.Equal("Test symptom", viewModel.Title);
+        Assert.Equal("Test subtitle", viewModel.Subtitle);
+        Assert.True(viewModel.IsCatchAll);
+        Assert.Equal(3, viewModel.CheckCount);
+        Assert.Equal(3, viewModel.Checks.Count);
     }
 
     // ── Expand / Collapse ────────────────────────────────────────────────────
@@ -44,21 +44,21 @@ public class SymptomCardViewModelTests
     public void ExpandCommand_InvokesRequestExpandWhenNotAlreadyExpanded()
     {
         SymptomCardViewModel? requested = null;
-        var vm = new SymptomCardViewModel(MakeSymptom(), target => requested = target, () => { });
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), target => requested = target, () => { });
 
-        vm.ExpandCommand.Execute(null);
+        viewModel.ExpandCommand.Execute(null);
 
-        Assert.Same(vm, requested);
+        Assert.Same(viewModel, requested);
     }
 
     [Fact]
     public void ExpandCommand_DoesNothingWhenAlreadyExpanded()
     {
         var callCount = 0;
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => callCount++, () => { });
-        vm.IsExpanded = true;
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => callCount++, () => { });
+        viewModel.IsExpanded = true;
 
-        vm.ExpandCommand.Execute(null);
+        viewModel.ExpandCommand.Execute(null);
 
         Assert.Equal(0, callCount);
     }
@@ -67,9 +67,9 @@ public class SymptomCardViewModelTests
     public void CollapseCommand_InvokesRequestCollapse()
     {
         var collapsed = false;
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => collapsed = true);
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => collapsed = true);
 
-        vm.CollapseCommand.Execute(null);
+        viewModel.CollapseCommand.Execute(null);
 
         Assert.True(collapsed);
     }
@@ -79,24 +79,24 @@ public class SymptomCardViewModelTests
     [Fact]
     public void RunButtonLabel_StartsAsRunDiagnostic()
     {
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
-        Assert.Equal("Run diagnostic", vm.RunButtonLabel);
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
+        Assert.Equal("Run diagnostic", viewModel.RunButtonLabel);
     }
 
     [Fact]
     public void RunButtonLabel_ShowsCheckingWhileRunning()
     {
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
-        vm.IsRunning = true;
-        Assert.Equal("Checking…", vm.RunButtonLabel);
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
+        viewModel.IsRunning = true;
+        Assert.Equal("Checking…", viewModel.RunButtonLabel);
     }
 
     [Fact]
     public void RunButtonLabel_ShowsRunAgainAfterFirstRun()
     {
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
-        vm.HasRunOnce = true;
-        Assert.Equal("Run again", vm.RunButtonLabel);
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
+        viewModel.HasRunOnce = true;
+        Assert.Equal("Run again", viewModel.RunButtonLabel);
     }
 
     // ── RunDiagnosticAsync ───────────────────────────────────────────────────
@@ -104,15 +104,15 @@ public class SymptomCardViewModelTests
     [Fact]
     public async Task RunDiagnosticAsync_AllPassingChecksProduceNoIssuesSummary()
     {
-        var vm = new SymptomCardViewModel(MakeSymptom(checkCount: 1), _ => { }, () => { });
+        var viewModel = new SymptomCardViewModel(MakeSymptom(checkCount: 1), _ => { }, () => { });
 
-        await vm.RunDiagnosticCommand.ExecuteAsync(null);
+        await viewModel.RunDiagnosticCommand.ExecuteAsync(null);
 
-        Assert.True(vm.HasRunOnce);
-        Assert.False(vm.IsRunning);
-        Assert.True(vm.ShowSummary);
-        Assert.False(vm.SummaryHasIssues);
-        Assert.Contains("no issues found", vm.SummaryText);
+        Assert.True(viewModel.HasRunOnce);
+        Assert.False(viewModel.IsRunning);
+        Assert.True(viewModel.ShowSummary);
+        Assert.False(viewModel.SummaryHasIssues);
+        Assert.Contains("no issues found", viewModel.SummaryText);
     }
 
     [Fact]
@@ -134,28 +134,28 @@ public class SymptomCardViewModelTests
                 },
             },
         };
-        var vm = new SymptomCardViewModel(symptom, _ => { }, () => { });
+        var viewModel = new SymptomCardViewModel(symptom, _ => { }, () => { });
 
-        await vm.RunDiagnosticCommand.ExecuteAsync(null);
+        await viewModel.RunDiagnosticCommand.ExecuteAsync(null);
 
-        Assert.True(vm.SummaryHasIssues);
-        Assert.Contains("1 thing", vm.SummaryText);
-        Assert.Equal(CheckStatus.Bad, vm.Checks[0].Status);
+        Assert.True(viewModel.SummaryHasIssues);
+        Assert.Contains("1 thing", viewModel.SummaryText);
+        Assert.Equal(CheckStatus.Bad, viewModel.Checks[0].Status);
     }
 
     [Fact]
     public void ResetRun_ClearsRunStateAndEachCheck()
     {
-        var vm = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
-        vm.IsRunning = true;
-        vm.HasRunOnce = true;
-        vm.ShowSummary = true;
+        var viewModel = new SymptomCardViewModel(MakeSymptom(), _ => { }, () => { });
+        viewModel.IsRunning = true;
+        viewModel.HasRunOnce = true;
+        viewModel.ShowSummary = true;
 
-        vm.ResetRun();
+        viewModel.ResetRun();
 
-        Assert.False(vm.IsRunning);
-        Assert.False(vm.HasRunOnce);
-        Assert.False(vm.ShowSummary);
-        Assert.Equal(CheckStatus.Pending, vm.Checks[0].Status);
+        Assert.False(viewModel.IsRunning);
+        Assert.False(viewModel.HasRunOnce);
+        Assert.False(viewModel.ShowSummary);
+        Assert.Equal(CheckStatus.Pending, viewModel.Checks[0].Status);
     }
 }

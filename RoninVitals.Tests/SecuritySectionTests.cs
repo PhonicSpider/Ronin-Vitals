@@ -11,24 +11,24 @@ public class SecuritySectionTests
     [Fact]
     public void Security_OffersDefenderVitalsAndBoth()
     {
-        Assert.Equal(new[] { "defender", "vitalsfiles", "scanboth" }, Security.Symptoms.Select(s => s.Id));
+        Assert.Equal(new[] { "defender", "vitalsfiles", "scanboth" }, Security.Symptoms.Select(symptom => symptom.Id));
     }
 
     [Fact]
     public void RunBoth_IsExactlyTheTwoOptionsChecksInOrder_SoItCannotDrift()
     {
-        var defender = Security.Symptoms.Single(s => s.Id == "defender").Checks;
-        var vitals = Security.Symptoms.Single(s => s.Id == "vitalsfiles").Checks;
-        var both = Security.Symptoms.Single(s => s.Id == "scanboth").Checks;
+        var defender = Security.Symptoms.Single(symptom => symptom.Id == "defender").Checks;
+        var vitals = Security.Symptoms.Single(symptom => symptom.Id == "vitalsfiles").Checks;
+        var both = Security.Symptoms.Single(symptom => symptom.Id == "scanboth").Checks;
 
-        Assert.Equal(defender.Concat(vitals).Select(c => c.Label), both.Select(c => c.Label));
+        Assert.Equal(defender.Concat(vitals).Select(check => check.Label), both.Select(check => check.Label));
     }
 
     [Fact]
     public void EveryScanCheckIsRealNeverAScriptedPlaceholder()
     {
         // A scan that shows a canned "all clear" would be worse than no scan at all.
-        foreach (var check in Security.Symptoms.SelectMany(s => s.Checks))
+        foreach (var check in Security.Symptoms.SelectMany(symptom => symptom.Checks))
             Assert.True(check.RealCheck is not null, $"'{check.Label}' has no real check behind it.");
     }
 

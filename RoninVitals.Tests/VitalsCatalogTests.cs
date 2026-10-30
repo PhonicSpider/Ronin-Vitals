@@ -12,11 +12,11 @@ public class VitalsCatalogTests
     [Fact]
     public void Sections_ContainsEveryKeyExactlyOnce()
     {
-        var keys = VitalsCatalog.Sections.Select(s => s.Key).ToList();
+        var keys = VitalsCatalog.Sections.Select(section => section.Key).ToList();
         var expected = Enum.GetValues<SectionKey>();
 
         foreach (var key in expected)
-            Assert.Single(keys, k => k == key);
+            Assert.Single(keys, sectionKey => sectionKey == key);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class VitalsCatalogTests
     // ── Symptoms ─────────────────────────────────────────────────────────────
 
     private static IEnumerable<Symptom> AllSymptoms
-        => VitalsCatalog.Sections.SelectMany(s => s.Symptoms);
+        => VitalsCatalog.Sections.SelectMany(section => section.Symptoms);
 
     [Fact]
     public void Symptoms_EveryOneHasAtLeastOneCheck()
@@ -49,7 +49,7 @@ public class VitalsCatalogTests
     [Fact]
     public void Symptoms_IdsAreUniqueAcrossTheWholeCatalog()
     {
-        var ids = AllSymptoms.Select(s => s.Id).ToList();
+        var ids = AllSymptoms.Select(symptom => symptom.Id).ToList();
         Assert.Equal(ids.Count, ids.Distinct().Count());
     }
 
@@ -59,19 +59,19 @@ public class VitalsCatalogTests
         // Not every section has a catch-all (Network/Software currently don't) - just guard
         // against two ever being marked in the same section, which would be ambiguous in the UI.
         foreach (var section in VitalsCatalog.Sections)
-            Assert.True(section.Symptoms.Count(s => s.IsCatchAll) <= 1, $"{section.Key} has more than one catch-all symptom.");
+            Assert.True(section.Symptoms.Count(symptom => symptom.IsCatchAll) <= 1, $"{section.Key} has more than one catch-all symptom.");
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────
 
     private static IEnumerable<CheckDefinition> AllChecks
-        => AllSymptoms.SelectMany(s => s.Checks);
+        => AllSymptoms.SelectMany(symptom => symptom.Checks);
 
     [Fact]
     public void Checks_EveryApplyFixHasAFixLabel()
     {
         // A fix with no label would have nothing to put on the button.
-        foreach (var check in AllChecks.Where(c => c.ApplyFix is not null))
+        foreach (var check in AllChecks.Where(candidate => candidate.ApplyFix is not null))
             Assert.False(string.IsNullOrWhiteSpace(check.FixLabel));
     }
 

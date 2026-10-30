@@ -24,49 +24,49 @@ public class SymptomsViewModelTests
     [Fact]
     public void Constructor_LoadsCardsFromTheRealCatalogSection()
     {
-        var vm = MakeViewModel();
-        Assert.Equal("NETWORK", vm.SectionLabel);
-        Assert.NotEmpty(vm.Cards);
+        var viewModel = MakeViewModel();
+        Assert.Equal("NETWORK", viewModel.SectionLabel);
+        Assert.NotEmpty(viewModel.Cards);
     }
 
     [Fact]
     public void BackLabel_IsAllAreasWhenNothingExpanded()
     {
-        var vm = MakeViewModel();
-        Assert.Equal("All areas", vm.BackLabel);
+        var viewModel = MakeViewModel();
+        Assert.Equal("All areas", viewModel.BackLabel);
     }
 
     [Fact]
     public void ExpandingACard_CollapsesAllSiblingsAndUpdatesBackLabel()
     {
-        var vm = MakeViewModel();
-        var target = vm.Cards[0];
+        var viewModel = MakeViewModel();
+        var target = viewModel.Cards[0];
 
         target.ExpandCommand.Execute(null);
 
         Assert.True(target.IsExpanded);
         Assert.False(target.IsSiblingCollapsed);
-        Assert.Same(target, vm.ExpandedCard);
-        Assert.Equal("All symptoms", vm.BackLabel);
+        Assert.Same(target, viewModel.ExpandedCard);
+        Assert.Equal("All symptoms", viewModel.BackLabel);
 
-        foreach (var sibling in vm.Cards.Where(c => c != target))
+        foreach (var sibling in viewModel.Cards.Where(card => card != target))
             Assert.True(sibling.IsSiblingCollapsed);
     }
 
     [Fact]
     public void CollapsingTheExpandedCard_RestoresAllSiblingsAndBackLabel()
     {
-        var vm = MakeViewModel();
-        var target = vm.Cards[0];
+        var viewModel = MakeViewModel();
+        var target = viewModel.Cards[0];
         target.ExpandCommand.Execute(null);
 
         target.CollapseCommand.Execute(null);
 
         Assert.False(target.IsExpanded);
-        Assert.Null(vm.ExpandedCard);
-        Assert.Equal("All areas", vm.BackLabel);
+        Assert.Null(viewModel.ExpandedCard);
+        Assert.Equal("All areas", viewModel.BackLabel);
 
-        foreach (var card in vm.Cards)
+        foreach (var card in viewModel.Cards)
             Assert.False(card.IsSiblingCollapsed);
     }
 
@@ -74,22 +74,22 @@ public class SymptomsViewModelTests
     public void BackCommand_CollapsesExpandedCardInsteadOfNavigatingHome()
     {
         var navigatedHome = false;
-        var vm = new SymptomsViewModel(SectionKey.Network, () => navigatedHome = true);
-        vm.Cards[0].ExpandCommand.Execute(null);
+        var viewModel = new SymptomsViewModel(SectionKey.Network, () => navigatedHome = true);
+        viewModel.Cards[0].ExpandCommand.Execute(null);
 
-        vm.BackCommand.Execute(null);
+        viewModel.BackCommand.Execute(null);
 
         Assert.False(navigatedHome);
-        Assert.Null(vm.ExpandedCard);
+        Assert.Null(viewModel.ExpandedCard);
     }
 
     [Fact]
     public void BackCommand_NavigatesHomeWhenNothingExpanded()
     {
         var navigatedHome = false;
-        var vm = new SymptomsViewModel(SectionKey.Network, () => navigatedHome = true);
+        var viewModel = new SymptomsViewModel(SectionKey.Network, () => navigatedHome = true);
 
-        vm.BackCommand.Execute(null);
+        viewModel.BackCommand.Execute(null);
 
         Assert.True(navigatedHome);
     }
@@ -97,14 +97,14 @@ public class SymptomsViewModelTests
     [Fact]
     public void ExpandingASecondCard_MovesExpansionRatherThanStacking()
     {
-        var vm = MakeViewModel();
-        if (vm.Cards.Count < 2) return; // Network section always has >1 symptom, but guard anyway.
+        var viewModel = MakeViewModel();
+        if (viewModel.Cards.Count < 2) return; // Network section always has >1 symptom, but guard anyway.
 
-        vm.Cards[0].ExpandCommand.Execute(null);
-        vm.Cards[1].ExpandCommand.Execute(null);
+        viewModel.Cards[0].ExpandCommand.Execute(null);
+        viewModel.Cards[1].ExpandCommand.Execute(null);
 
-        Assert.False(vm.Cards[0].IsExpanded);
-        Assert.True(vm.Cards[1].IsExpanded);
-        Assert.Same(vm.Cards[1], vm.ExpandedCard);
+        Assert.False(viewModel.Cards[0].IsExpanded);
+        Assert.True(viewModel.Cards[1].IsExpanded);
+        Assert.Same(viewModel.Cards[1], viewModel.ExpandedCard);
     }
 }

@@ -221,7 +221,7 @@ public static class SecurityScanService
             ? document.RootElement.EnumerateArray().ToList()
             : [document.RootElement];
 
-        foreach (var item in items.Where(item => item.ValueKind == JsonValueKind.Object))
+        foreach (var item in items.Where(candidate => candidate.ValueKind == JsonValueKind.Object))
         {
             var name = ReadString(item, "Name");
             var resources = ReadString(item, "Resources");

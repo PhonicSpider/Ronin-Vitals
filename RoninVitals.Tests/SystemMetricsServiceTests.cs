@@ -17,10 +17,10 @@ public class SystemMetricsServiceTests
     [Fact]
     public void FormatUptime_ChangesEverySecond_SoItReadsAsALiveClock()
     {
-        var a = SystemMetricsService.FormatUptime(new TimeSpan(1, 2, 3, 4));
-        var b = SystemMetricsService.FormatUptime(new TimeSpan(1, 2, 3, 5));
-        Assert.Equal("01:02:03:04", a);
-        Assert.Equal("01:02:03:05", b);
+        var atFourSeconds = SystemMetricsService.FormatUptime(new TimeSpan(1, 2, 3, 4));
+        var atFiveSeconds = SystemMetricsService.FormatUptime(new TimeSpan(1, 2, 3, 5));
+        Assert.Equal("01:02:03:04", atFourSeconds);
+        Assert.Equal("01:02:03:05", atFiveSeconds);
     }
 
     [Fact]

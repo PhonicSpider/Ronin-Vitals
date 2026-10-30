@@ -24,26 +24,26 @@ public class CheckItemViewModelTests
     [Fact]
     public async Task CompleteAsync_UsesScriptedResultWhenNoRealCheck()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Warn));
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Warn));
 
-        await vm.CompleteAsync();
+        await viewModel.CompleteAsync();
 
-        Assert.Equal(CheckStatus.Warn, vm.Status);
-        Assert.Equal("Scripted result", vm.ResultText);
-        Assert.True(vm.ShowResult);
+        Assert.Equal(CheckStatus.Warn, viewModel.Status);
+        Assert.Equal("Scripted result", viewModel.ResultText);
+        Assert.True(viewModel.ShowResult);
     }
 
     [Fact]
     public async Task CompleteAsync_PrefersRealCheckOverScripted()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(
+        var viewModel = new CheckItemViewModel(MakeDefinition(
             scriptedStatus: CheckStatus.Pass,
             realCheck: () => new CheckResult(CheckStatus.Bad, "Real result")));
 
-        await vm.CompleteAsync();
+        await viewModel.CompleteAsync();
 
-        Assert.Equal(CheckStatus.Bad, vm.Status);
-        Assert.Equal("Real result", vm.ResultText);
+        Assert.Equal(CheckStatus.Bad, viewModel.Status);
+        Assert.Equal("Real result", viewModel.ResultText);
     }
 
     // ── ShowFixArea ──────────────────────────────────────────────────────────
@@ -51,33 +51,33 @@ public class CheckItemViewModelTests
     [Fact]
     public async Task ShowFixArea_FalseBeforeResultShown()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
-        Assert.False(vm.ShowFixArea);
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
+        Assert.False(viewModel.ShowFixArea);
         await Task.CompletedTask;
     }
 
     [Fact]
     public async Task ShowFixArea_FalseWhenStatusIsPass()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Pass, fixLabel: "Fix it"));
-        await vm.CompleteAsync();
-        Assert.False(vm.ShowFixArea);
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Pass, fixLabel: "Fix it"));
+        await viewModel.CompleteAsync();
+        Assert.False(viewModel.ShowFixArea);
     }
 
     [Fact]
     public async Task ShowFixArea_FalseWhenNoFixLabel()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: null));
-        await vm.CompleteAsync();
-        Assert.False(vm.ShowFixArea);
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: null));
+        await viewModel.CompleteAsync();
+        Assert.False(viewModel.ShowFixArea);
     }
 
     [Fact]
     public async Task ShowFixArea_TrueWhenNonPassResultShownAndFixLabelSet()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
-        await vm.CompleteAsync();
-        Assert.True(vm.ShowFixArea);
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
+        await viewModel.CompleteAsync();
+        Assert.True(viewModel.ShowFixArea);
     }
 
     // ── Reset ────────────────────────────────────────────────────────────────
@@ -85,28 +85,28 @@ public class CheckItemViewModelTests
     [Fact]
     public async Task Reset_ClearsStatusResultAndFixState()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
-        await vm.CompleteAsync();
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it"));
+        await viewModel.CompleteAsync();
 
-        vm.Reset();
+        viewModel.Reset();
 
-        Assert.Equal(CheckStatus.Pending, vm.Status);
-        Assert.Equal(string.Empty, vm.ResultText);
-        Assert.False(vm.ShowResult);
-        Assert.False(vm.FixApplied);
+        Assert.Equal(CheckStatus.Pending, viewModel.Status);
+        Assert.Equal(string.Empty, viewModel.ResultText);
+        Assert.False(viewModel.ShowResult);
+        Assert.False(viewModel.FixApplied);
     }
 
     [Fact]
     public void Reset_ClearsGuidanceTextOpenedOnAPreviousRun()
     {
         // Regression: tips opened via an informational fix button stayed on screen after "Run again".
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Warn, fixLabel: "Show tips"));
-        vm.FixMessage = "Some advice shown after clicking the fix button.";
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Warn, fixLabel: "Show tips"));
+        viewModel.FixMessage = "Some advice shown after clicking the fix button.";
 
-        vm.Reset();
+        viewModel.Reset();
 
-        Assert.Equal(string.Empty, vm.FixMessage);
-        Assert.False(vm.HasFixMessage);
+        Assert.Equal(string.Empty, viewModel.FixMessage);
+        Assert.False(viewModel.HasFixMessage);
     }
 
     // ── ApplyFix (cosmetic path only - the real-fix path routes through
@@ -117,10 +117,10 @@ public class CheckItemViewModelTests
     [Fact]
     public async Task ApplyFix_CosmeticFlipWhenNoApplyFixDelegate()
     {
-        var vm = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it", applyFix: null));
+        var viewModel = new CheckItemViewModel(MakeDefinition(scriptedStatus: CheckStatus.Bad, fixLabel: "Fix it", applyFix: null));
 
-        await vm.ApplyFixCommand.ExecuteAsync(null);
+        await viewModel.ApplyFixCommand.ExecuteAsync(null);
 
-        Assert.True(vm.FixApplied);
+        Assert.True(viewModel.FixApplied);
     }
 }

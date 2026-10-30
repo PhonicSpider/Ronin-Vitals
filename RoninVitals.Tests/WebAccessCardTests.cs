@@ -1,3 +1,4 @@
+using RoninVitals.Models;
 using RoninVitals.Services;
 using Xunit;
 
@@ -5,8 +6,8 @@ namespace RoninVitals.Tests;
 
 public class WebAccessCardTests
 {
-    private static IReadOnlyList<RoninVitals.Models.CheckDefinition> Checks =>
-        VitalsCatalog.Sections.SelectMany(s => s.Symptoms).Single(s => s.Id == "cantreach").Checks;
+    private static IReadOnlyList<CheckDefinition> Checks =>
+        VitalsCatalog.Sections.SelectMany(section => section.Symptoms).Single(symptom => symptom.Id == "cantreach").Checks;
 
     [Fact]
     public void EveryCheckOnTheCardIsRealNeverAScriptedPlaceholder()
@@ -21,7 +22,7 @@ public class WebAccessCardTests
     {
         // The old firewall check offered "Allow this app through firewall" with nothing wired to it. A fix button must either
         // run a real fix or show guidance text; a button that does neither just flips to "Applied".
-        foreach (var check in Checks.Where(c => c.FixLabel is not null))
+        foreach (var check in Checks.Where(candidate => candidate.FixLabel is not null))
             Assert.True(check.ApplyFix is not null || !string.IsNullOrWhiteSpace(check.FixInfoText), $"'{check.Label}' has a fix button with nothing behind it.");
     }
 
@@ -34,9 +35,9 @@ public class WebAccessCardTests
     {
         foreach (var label in new[] { "Checking your clock is right", "Checking your browsers' saved data" })
         {
-            var check = Checks.Single(c => c.Label == label);
+            var check = Checks.Single(candidate => candidate.Label == label);
             Assert.NotNull(check.ApplyFix);
-            Assert.Equal(RoninVitals.Models.FixTier.SafeAutoFix, check.Tier);
+            Assert.Equal(FixTier.SafeAutoFix, check.Tier);
         }
     }
 }
