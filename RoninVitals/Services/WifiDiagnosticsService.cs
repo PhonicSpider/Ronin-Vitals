@@ -118,7 +118,7 @@ public static class WifiDiagnosticsService
     /// </summary>
     public static CheckResult CheckSignalStrengthIfActive()
     {
-        var activeAdapter = NetworkDiagnosticsService.GetActiveAdapter();
+        var activeAdapter = ActiveAdapter.Find();
         if (activeAdapter is not null && activeAdapter.NetworkInterfaceType != NetworkInterfaceType.Wireless80211)
         {
             var connectionType = activeAdapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? "Ethernet" : "a wired connection";
@@ -138,7 +138,7 @@ public static class WifiDiagnosticsService
     /// </summary>
     public static CheckResult CheckNetworkCongestion()
     {
-        var activeAdapter = NetworkDiagnosticsService.GetActiveAdapter();
+        var activeAdapter = ActiveAdapter.Find();
         if (activeAdapter is not null && activeAdapter.NetworkInterfaceType != NetworkInterfaceType.Wireless80211)
         {
             var connectionType = activeAdapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? "Ethernet" : "a wired connection";

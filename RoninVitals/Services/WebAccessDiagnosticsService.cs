@@ -84,7 +84,7 @@ public static class WebAccessDiagnosticsService
             var system = DnsProbeNames.Select(n => (Name: n, R: ResolveWithSystemDns(n))).ToList();
             var pub = DnsProbeNames.Select(n => (Name: n, R: ResolveWithPublicDns(n))).ToList();
 
-            var configured = NetworkDiagnosticsService.GetActiveAdapter()?.GetIPProperties().DnsAddresses
+            var configured = ActiveAdapter.Find()?.GetIPProperties().DnsAddresses
                 .Where(a => a.AddressFamily == AddressFamily.InterNetwork).Select(a => a.ToString()).ToList() ?? new List<string>();
             var techDetail = $"DNS servers on the active adapter: {(configured.Count == 0 ? "(none found)" : string.Join(", ", configured))}. " +
                 string.Join(" | ", system.Zip(pub, (s, p) => $"{s.Name}: yours {(s.R.Ok ? "ok" : "FAILED")} ({s.R.Ms} ms, {s.R.Detail}), public {(p.R.Ok ? "ok" : "failed")} ({p.R.Ms} ms, {p.R.Detail})"));
