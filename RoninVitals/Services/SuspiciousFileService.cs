@@ -1,212 +1,155 @@
-using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Win32;
 using RoninVitals.Models;
+using static RoninVitals.Services.CheckText;
 
 namespace RoninVitals.Services;
 
 /// <summary>
-/// Vitals' own read-only look for suspicious-looking files, the counterpart to the Microsoft Defender
-/// scan in <see cref="SecurityScanService"/>. It finds things that are *worth a second look* (a program
-/// pretending to be a PDF, an unsigned installer someone dropped in Downloads, something set to start
-/// with Windows from a Temp folder). It cannot tell malware from a harmless program, and the wording of
-/// every result says so instead of claiming a verdict. Nothing here deletes, moves or runs anything.
-/// Folder walks are bounded by depth, file count and time so a huge Documents folder cannot stall a check.
+/// Vitals' own read-only look for files worth a second look: programs disguised as documents, recent unsigned programs,
+/// and startup entries launching from odd places. It cannot tell malware from a harmless program, so results say
+/// "worth checking", never "infected". It deletes, moves and runs nothing. Folder walks are bounded (see
+/// <see cref="BoundedFileWalker"/>). Microsoft Defender's scan is in <see cref="SecurityScanService"/>.
 /// </summary>
 public static class SuspiciousFileService
 {
+    private const int DisguisedFileSearchDepth = 3;
+    private const int UnsignedProgramSearchDepth = 2;
+    private const int RecentProgramDays = 30;
+    private const int MaxProgramsToVerify = 300;
+    private const int MaxProgramsToDescribe = 10;
+    private const long MaxHashedFileBytes = 100L * 1024 * 1024;
+    private const string RightToLeftOverride = "‮";
+
+    private static readonly TimeSpan WalkTimeLimit = TimeSpan.FromSeconds(40);
+    private static readonly HashSet<string> ProgramExtensions = new(StringComparer.OrdinalIgnoreCase) { ".exe", ".scr", ".msi" };
+
+    private sealed record UnsignedProgram(string Path, uint TrustResult);
+    private sealed record StartupFinding(string Location, string Name, string Command);
+
     private static string DownloadsFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     private static string DesktopFolder => Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     private static string DocumentsFolder => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     private static string TempFolder => Path.GetTempPath().TrimEnd('\\');
 
-    private static readonly HashSet<string> SignedProgramExtensions = new(StringComparer.OrdinalIgnoreCase) { ".exe", ".scr", ".msi" };
+    /// <summary>The right-to-left override character is the trick being reported, so show it as a marker instead of letting it garble the text.</summary>
+    private static string MakeOverrideVisible(string text) => text.Replace(RightToLeftOverride, "<RLO>");
 
-    private sealed class ScanBudget
-    {
-        private readonly Stopwatch _clock = Stopwatch.StartNew();
-        private readonly int _maxFiles;
-        private readonly TimeSpan _maxTime;
-        public ScanBudget(int maxFiles, TimeSpan maxTime) { _maxFiles = maxFiles; _maxTime = maxTime; }
-        public int FilesSeen { get; set; }
-        public bool Truncated { get; private set; }
-        public bool Exhausted
-        {
-            get
-            {
-                if (FilesSeen >= _maxFiles || _clock.Elapsed > _maxTime) Truncated = true;
-                return Truncated;
-            }
-        }
-    }
+    private static string DisplayFileName(string path) => MakeOverrideVisible(Path.GetFileName(path));
 
-    private static IEnumerable<string> WalkFiles(IEnumerable<string> roots, int maxDepth, ScanBudget budget)
-    {
-        var stack = new Stack<(string Dir, int Depth)>();
-        foreach (var root in roots.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
-            stack.Push((root, 0));
-
-        while (stack.Count > 0)
-        {
-            if (budget.Exhausted) yield break;
-            var (dir, depth) = stack.Pop();
-
-            string[] files;
-            string[] subdirs;
-            try
-            {
-                files = Directory.GetFiles(dir);
-                subdirs = depth < maxDepth ? Directory.GetDirectories(dir) : Array.Empty<string>();
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-            {
-                continue; // a folder we can't read isn't a finding, just a gap
-            }
-
-            foreach (var file in files)
-            {
-                budget.FilesSeen++;
-                if (budget.Exhausted) yield break;
-                yield return file;
-            }
-
-            foreach (var sub in subdirs)
-            {
-                try
-                {
-                    // Junctions/symlinks can loop back on themselves or point somewhere huge.
-                    if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) continue;
-                }
-                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { continue; }
-                stack.Push((sub, depth + 1));
-            }
-        }
-    }
-
-    /// <summary>The right-to-left override character would make the UI draw the name reversed, which
-    /// is exactly the trick being reported, so show it as a visible marker instead.</summary>
-    private static string Display(string path) => Path.GetFileName(path).Replace("\u202E", "<RLO>");
-
-    private static string Examples(IEnumerable<string> names, int max = 3)
-    {
-        var list = names.Distinct().ToList();
-        var shown = string.Join(", ", list.Take(max));
-        return list.Count > max ? $"{shown} and {list.Count - max} more" : shown;
-    }
-
-    private static string Plural(int n, string one, string many) => n == 1 ? one : many;
-
-    // ── Check 1: files pretending to be something else ──────────────────────────────────────────
+    // ── Programs disguised as documents ─────────────────────────────────────────────────────
 
     public static CheckResult CheckDisguisedFiles()
     {
         const string techCommand =
-            @"Get-ChildItem $env:USERPROFILE\Downloads, [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('MyDocuments'), $env:TEMP -Recurse -Depth 3 -File | Where-Object { $_.Name -match '\.(pdf|docx?|xlsx?|pptx?|txt|jpe?g|png|gif|zip)\s*\.(exe|scr|bat|cmd|js|vbs|ps1)$' -or $_.Name -match '\u202E' }";
+            @"Get-ChildItem $env:USERPROFILE\Downloads, [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('MyDocuments'), $env:TEMP -Recurse -Depth 3 -File | Where-Object { $_.Name -match '\.(pdf|docx?|xlsx?|pptx?|txt|jpe?g|png|gif|zip)\s*\.(exe|scr|bat|cmd|js|vbs|ps1)$' -or $_.Name -match '‮' }";
         try
         {
-            var budget = new ScanBudget(maxFiles: 60_000, maxTime: TimeSpan.FromSeconds(40));
-            var roots = new[] { DownloadsFolder, DesktopFolder, DocumentsFolder, TempFolder };
-            var hits = WalkFiles(roots, maxDepth: 3, budget).Where(SuspiciousFileRules.IsDisguisedExecutable).ToList();
+            var budget = new ScanBudget(maxFiles: 60_000, WalkTimeLimit);
+            string[] searchFolders = [DownloadsFolder, DesktopFolder, DocumentsFolder, TempFolder];
+            var disguisedFiles = BoundedFileWalker.EnumerateFiles(searchFolders, DisguisedFileSearchDepth, budget)
+                .Where(SuspiciousFileRules.IsDisguisedExecutable)
+                .ToList();
 
-            var techDetail = $"Looked at {budget.FilesSeen:N0} files{(budget.Truncated ? " (stopped at the scan limit, so very large folders were only partly covered)" : "")}. " +
-                             (hits.Count == 0 ? "None matched." : "Matches: " + string.Join(" | ", hits.Take(25).Select(h => h.Replace("\u202E", "<RLO>"))));
+            var coverage = $"Looked at {budget.FilesSeen:N0} files{(budget.Truncated ? " (stopped at the scan limit, so very large folders were only partly covered)" : "")}.";
+            var techDetail = disguisedFiles.Count == 0
+                ? $"{coverage} None matched."
+                : $"{coverage} Matches: {string.Join(" | ", disguisedFiles.Take(25).Select(MakeOverrideVisible))}";
 
-            return hits.Count == 0
-                ? new CheckResult(CheckStatus.Pass, "No programs pretending to be documents or pictures (like invoice.pdf.exe) in your Downloads, Desktop, Documents or Temp folders.", techCommand, techDetail)
-                : new CheckResult(CheckStatus.Bad,
-                    $"{hits.Count} {Plural(hits.Count, "file looks", "files look")} like a document or picture but {Plural(hits.Count, "is actually a program", "are actually programs")} (for example {Examples(hits.Select(Display))}). Don't open {Plural(hits.Count, "it", "them")}.",
-                    techCommand, techDetail);
+            if (disguisedFiles.Count == 0)
+                return new CheckResult(CheckStatus.Pass, "No programs pretending to be documents or pictures (like invoice.pdf.exe) in your Downloads, Desktop, Documents or Temp folders.", techCommand, techDetail);
+
+            var count = disguisedFiles.Count;
+            return new CheckResult(CheckStatus.Bad,
+                $"{count} {Plural(count, "file looks", "files look")} like a document or picture but {Plural(count, "is actually a program", "are actually programs")} (for example {Examples(disguisedFiles.Select(DisplayFileName))}). Don't open {Plural(count, "it", "them")}.",
+                techCommand, techDetail);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't finish looking for disguised files.", techCommand, $"{ex.GetType().Name}: {ex.Message}");
+            return new CheckResult(CheckStatus.Warn, "Couldn't finish looking for disguised files.", techCommand, DescribeException(exception));
         }
     }
 
-    // ── Check 2: recent programs with no valid digital signature ────────────────────────────────
+    // ── Recent programs without a valid digital signature ───────────────────────────────────
 
     public static CheckResult CheckUnsignedPrograms()
     {
         const string techCommand =
             @"Get-ChildItem $env:USERPROFILE\Downloads, [Environment]::GetFolderPath('Desktop'), $env:TEMP -Recurse -Depth 2 -Include *.exe,*.scr,*.msi -File | Where-Object LastWriteTime -gt (Get-Date).AddDays(-30) | Get-AuthenticodeSignature | Where-Object Status -ne 'Valid'";
-        const int recentDays = 30;
-        const int maxToVerify = 300;
         try
         {
-            var cutoff = DateTime.Now.AddDays(-recentDays);
-            var budget = new ScanBudget(maxFiles: 40_000, maxTime: TimeSpan.FromSeconds(40));
-            var roots = new[] { DownloadsFolder, DesktopFolder, TempFolder };
-            var all = WalkFiles(roots, maxDepth: 2, budget)
-                .Where(f => SignedProgramExtensions.Contains(Path.GetExtension(f)))
-                .Select(f => (Path: f, Written: TryGetLastWrite(f)))
-                .Where(f => f.Written >= cutoff)
+            var recentSince = DateTime.Now.AddDays(-RecentProgramDays);
+            var budget = new ScanBudget(maxFiles: 40_000, WalkTimeLimit);
+            string[] searchFolders = [DownloadsFolder, DesktopFolder, TempFolder];
+            var recentPrograms = BoundedFileWalker.EnumerateFiles(searchFolders, UnsignedProgramSearchDepth, budget)
+                .Where(file => ProgramExtensions.Contains(Path.GetExtension(file)))
+                .Select(file => (Path: file, LastWritten: GetLastWriteTimeOrMinimum(file)))
+                .Where(program => program.LastWritten >= recentSince)
                 .ToList();
 
-            // Verify the newest first: if there are more than the cap (a busy Temp folder easily has), the
-            // freshest files are the ones worth checking, and the result must say it was capped.
-            var candidates = all.OrderByDescending(f => f.Written).Take(maxToVerify).Select(f => f.Path).ToList();
-            var capped = all.Count > candidates.Count;
+            // Newest first: when there are more than the cap (a busy Temp folder easily has), the freshest are worth checking.
+            var programsToVerify = recentPrograms.OrderByDescending(program => program.LastWritten).Take(MaxProgramsToVerify).Select(program => program.Path).ToList();
+            var wasCapped = recentPrograms.Count > programsToVerify.Count;
 
-            var unsigned = new List<(string Path, uint Code)>();
-            foreach (var file in candidates)
-            {
-                var code = Authenticode.Verify(file);
-                if (code != 0) unsigned.Add((file, code));
-            }
+            var unsignedPrograms = programsToVerify
+                .Select(path => new UnsignedProgram(path, AuthenticodeVerifier.Verify(path)))
+                .Where(program => program.TrustResult != AuthenticodeVerifier.ValidSignature)
+                .ToList();
 
-            var scope = capped ? $"the {candidates.Count} newest of {all.Count}" : $"all {candidates.Count}";
-            var techDetail = $"Checked {scope} program(s) changed in the last {recentDays} days. " +
-                             (unsigned.Count == 0
+            var scope = wasCapped ? $"the {programsToVerify.Count} newest of {recentPrograms.Count}" : $"all {programsToVerify.Count}";
+            var techDetail = $"Checked {scope} program(s) changed in the last {RecentProgramDays} days. " +
+                             (unsignedPrograms.Count == 0
                                  ? "All have a valid signature."
-                                 : "No valid signature: " + string.Join(" | ", unsigned.Take(10).Select(u => DescribeUnsigned(u.Path, u.Code))));
+                                 : "No valid signature: " + string.Join(" | ", unsignedPrograms.Take(MaxProgramsToDescribe).Select(DescribeUnsignedProgram)));
 
-            return unsigned.Count == 0
-                ? new CheckResult(CheckStatus.Pass,
-                    capped
-                        ? $"The {candidates.Count} newest programs from the last {recentDays} days in your Downloads, Desktop and Temp folders all have a valid digital signature."
-                        : $"Every program from the last {recentDays} days in your Downloads, Desktop and Temp folders has a valid digital signature.",
-                    techCommand, techDetail)
-                : new CheckResult(CheckStatus.Warn,
-                    $"{unsigned.Count} {Plural(unsigned.Count, "program", "programs")} from the last {recentDays} days in Downloads, Desktop or Temp {Plural(unsigned.Count, "has", "have")} no valid digital signature (for example {Examples(unsigned.Select(u => Display(u.Path)))}). That doesn't mean {Plural(unsigned.Count, "it's", "they're")} unsafe, since plenty of small or older programs aren't signed, but make sure you know where {Plural(unsigned.Count, "it", "each one")} came from.",
+            if (unsignedPrograms.Count == 0)
+                return new CheckResult(CheckStatus.Pass,
+                    wasCapped
+                        ? $"The {programsToVerify.Count} newest programs from the last {RecentProgramDays} days in your Downloads, Desktop and Temp folders all have a valid digital signature."
+                        : $"Every program from the last {RecentProgramDays} days in your Downloads, Desktop and Temp folders has a valid digital signature.",
                     techCommand, techDetail);
+
+            var count = unsignedPrograms.Count;
+            return new CheckResult(CheckStatus.Warn,
+                $"{count} {Plural(count, "program", "programs")} from the last {RecentProgramDays} days in Downloads, Desktop or Temp {Plural(count, "has", "have")} no valid digital signature (for example {Examples(unsignedPrograms.Select(program => DisplayFileName(program.Path)))}). That doesn't mean {Plural(count, "it's", "they're")} unsafe, since plenty of small or older programs aren't signed, but make sure you know where {Plural(count, "it", "each one")} came from.",
+                techCommand, techDetail);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't finish checking program signatures.", techCommand, $"{ex.GetType().Name}: {ex.Message}");
+            return new CheckResult(CheckStatus.Warn, "Couldn't finish checking program signatures.", techCommand, DescribeException(exception));
         }
     }
 
-    private static DateTime TryGetLastWrite(string path)
+    private static DateTime GetLastWriteTimeOrMinimum(string path)
     {
         try { return File.GetLastWriteTime(path); }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { return DateTime.MinValue; }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException) { return DateTime.MinValue; }
     }
 
-    /// <summary>Path, size, date, trust-result code and a SHA-256 (for files under 100 MB) - the hash is
-    /// what a technician would paste into a reputation lookup such as VirusTotal's search box.</summary>
-    private static string DescribeUnsigned(string path, uint code)
+    /// <summary>Path, size, trust code and SHA-256 (what a technician pastes into a reputation lookup such as VirusTotal).</summary>
+    private static string DescribeUnsignedProgram(UnsignedProgram program)
     {
-        string hash = "hash skipped";
-        string size = "?";
         try
         {
-            var info = new FileInfo(path);
-            size = $"{info.Length / 1024.0 / 1024.0:0.0} MB";
-            if (info.Length <= 100L * 1024 * 1024)
+            var file = new FileInfo(program.Path);
+            var size = $"{file.Length / 1024.0 / 1024.0:0.0} MB";
+            string hash;
+            if (file.Length > MaxHashedFileBytes) hash = "hash skipped (over 100 MB)";
+            else
             {
-                using var stream = File.OpenRead(path);
+                using var stream = File.OpenRead(program.Path);
                 hash = "SHA-256 " + Convert.ToHexString(SHA256.HashData(stream));
             }
-            else hash = "hash skipped (over 100 MB)";
+            return $"{program.Path} ({size}, trust result 0x{program.TrustResult:X8}, {hash})";
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { hash = "hash unavailable (file in use)"; }
-
-        return $"{path} ({size}, trust result 0x{code:X8}, {hash})";
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            return $"{program.Path} (trust result 0x{program.TrustResult:X8}, size and hash unavailable: file in use)";
+        }
     }
 
-    // ── Check 3: startup entries launching from unusual places ──────────────────────────────────
+    // ── Startup entries launching from unusual places ───────────────────────────────────────
 
     public static CheckResult CheckStartupEntries()
     {
@@ -214,134 +157,56 @@ public static class SuspiciousFileService
             @"Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run','HKLM:\Software\Microsoft\Windows\CurrentVersion\Run','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'; Get-ChildItem ""$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"", ""$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp""";
         try
         {
-            var flagged = new List<(string Where, string Name, string Command)>();
-            var examined = 0;
+            var findings = new List<StartupFinding>();
+            var entriesExamined = 0;
 
-            foreach (var (hive, label, subKey) in new[]
-            {
+            (RegistryKey Hive, string Label, string SubKey)[] runKeys =
+            [
                 (Registry.CurrentUser, "HKCU", @"Software\Microsoft\Windows\CurrentVersion\Run"),
                 (Registry.LocalMachine, "HKLM", @"Software\Microsoft\Windows\CurrentVersion\Run"),
                 (Registry.LocalMachine, "HKLM (32-bit)", @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
-            })
+            ];
+            foreach (var (hive, label, subKey) in runKeys)
             {
-                using var key = hive.OpenSubKey(subKey);
-                if (key is null) continue;
-                foreach (var name in key.GetValueNames())
+                using var runKey = hive.OpenSubKey(subKey);
+                if (runKey is null) continue;
+                foreach (var entryName in runKey.GetValueNames())
                 {
-                    examined++;
-                    if (key.GetValue(name) is not string command) continue;
+                    entriesExamined++;
+                    if (runKey.GetValue(entryName) is not string command) continue;
                     if (SuspiciousFileRules.IsRiskyLaunchLocation(SuspiciousFileRules.ExtractExecutablePath(command)))
-                        flagged.Add((label + @"\Run", name, command));
+                        findings.Add(new StartupFinding($@"{label}\Run", entryName, command));
                 }
             }
 
-            foreach (var folder in new[] { Environment.GetFolderPath(Environment.SpecialFolder.Startup), Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup) })
+            string[] startupFolders = [Environment.GetFolderPath(Environment.SpecialFolder.Startup), Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup)];
+            foreach (var startupFolder in startupFolders.Where(Directory.Exists))
             {
-                if (!Directory.Exists(folder)) continue;
-                foreach (var file in Directory.GetFiles(folder))
+                foreach (var file in Directory.GetFiles(startupFolder))
                 {
-                    examined++;
-                    // A shortcut (.lnk) is the normal way to autostart something; a script or program sitting
-                    // directly in the Startup folder is not.
-                    var ext = Path.GetExtension(file);
-                    if (ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) || ext.Equals(".ini", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (SuspiciousFileRules.ExecutableExtensions.Contains(ext))
-                        flagged.Add(("Startup folder", Path.GetFileName(file), file));
+                    entriesExamined++;
+                    // A shortcut is the normal way to autostart something; a program or script sitting in the folder is not.
+                    if (SuspiciousFileRules.ExecutableExtensions.Contains(Path.GetExtension(file)))
+                        findings.Add(new StartupFinding("Startup folder", Path.GetFileName(file), file));
                 }
             }
 
-            var techDetail = $"Looked at {examined} startup entr{(examined == 1 ? "y" : "ies")}. " +
-                             (flagged.Count == 0 ? "None launch from Temp, Downloads, Public or the Recycle Bin." : "Flagged: " + string.Join(" | ", flagged.Select(f => $"{f.Where}: {f.Name} = {f.Command}")));
+            var techDetail = $"Looked at {entriesExamined} startup entr{(entriesExamined == 1 ? "y" : "ies")}. " +
+                             (findings.Count == 0
+                                 ? "None launch from Temp, Downloads, Public or the Recycle Bin."
+                                 : "Flagged: " + string.Join(" | ", findings.Select(finding => $"{finding.Location}: {finding.Name} = {finding.Command}")));
 
-            return flagged.Count == 0
-                ? new CheckResult(CheckStatus.Pass, "Nothing is set to start with Windows from a Temp, Downloads or other unusual folder.", techCommand, techDetail)
-                : new CheckResult(CheckStatus.Warn,
-                    $"{flagged.Count} startup {Plural(flagged.Count, "entry launches", "entries launch")} {Plural(flagged.Count, "a program", "programs")} from Temp, Downloads or another unusual place (for example {Examples(flagged.Select(f => f.Name))}). Legitimate software normally starts from Program Files, so this is worth checking.",
-                    techCommand, techDetail);
+            if (findings.Count == 0)
+                return new CheckResult(CheckStatus.Pass, "Nothing is set to start with Windows from a Temp, Downloads or other unusual folder.", techCommand, techDetail);
+
+            var count = findings.Count;
+            return new CheckResult(CheckStatus.Warn,
+                $"{count} startup {Plural(count, "entry launches", "entries launch")} {Plural(count, "a program", "programs")} from Temp, Downloads or another unusual place (for example {Examples(findings.Select(finding => finding.Name))}). Legitimate software normally starts from Program Files, so this is worth checking.",
+                techCommand, techDetail);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            return new CheckResult(CheckStatus.Warn, "Couldn't finish checking your startup entries.", techCommand, $"{ex.GetType().Name}: {ex.Message}");
-        }
-    }
-
-    // ── Digital signature verification via Windows' own trust provider ──────────────────────────
-
-    /// <summary>
-    /// Wraps WinVerifyTrust (what Explorer's file Properties > Digital Signatures tab is built on).
-    /// Revocation checks are off and URL retrieval is cache-only, so verifying a file never reaches out
-    /// to the network and a scan stays fast and offline-safe.
-    /// </summary>
-    private static class Authenticode
-    {
-        private static Guid GenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        private struct WinTrustFileInfo
-        {
-            public uint cbStruct;
-            [MarshalAs(UnmanagedType.LPWStr)] public string pcwszFilePath;
-            public IntPtr hFile;
-            public IntPtr pgKnownSubject;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct WinTrustData
-        {
-            public uint cbStruct;
-            public IntPtr pPolicyCallbackData;
-            public IntPtr pSIPClientData;
-            public uint dwUIChoice;
-            public uint fdwRevocationChecks;
-            public uint dwUnionChoice;
-            public IntPtr pFile;
-            public uint dwStateAction;
-            public IntPtr hWVTStateData;
-            public IntPtr pwszURLReference;
-            public uint dwProvFlags;
-            public uint dwUIContext;
-            public IntPtr pSignatureSettings;
-        }
-
-        [DllImport("wintrust.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
-        private static extern uint WinVerifyTrust(IntPtr hwnd, ref Guid pgActionID, ref WinTrustData pWVTData);
-
-        private const uint WtdUiNone = 2;
-        private const uint WtdChoiceFile = 1;
-        private const uint WtdRevokeNone = 0;
-        private const uint WtdCacheOnlyUrlRetrieval = 0x1000;
-
-        /// <summary>0 means a valid signature; anything else is a Windows trust error code (for example
-        /// 0x800B0100 = not signed at all). A failure to even run the check counts as "not verified".</summary>
-        public static uint Verify(string path)
-        {
-            var fileInfo = new WinTrustFileInfo { pcwszFilePath = path };
-            fileInfo.cbStruct = (uint)Marshal.SizeOf(fileInfo);
-            var pFile = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
-            try
-            {
-                Marshal.StructureToPtr(fileInfo, pFile, false);
-                var data = new WinTrustData
-                {
-                    dwUIChoice = WtdUiNone,
-                    fdwRevocationChecks = WtdRevokeNone,
-                    dwUnionChoice = WtdChoiceFile,
-                    pFile = pFile,
-                    dwProvFlags = WtdCacheOnlyUrlRetrieval,
-                };
-                data.cbStruct = (uint)Marshal.SizeOf(data);
-                // INVALID_HANDLE_VALUE as the window handle = never show UI.
-                return WinVerifyTrust(new IntPtr(-1), ref GenericVerifyV2, ref data);
-            }
-            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ArgumentException)
-            {
-                return uint.MaxValue;
-            }
-            finally
-            {
-                Marshal.DestroyStructure<WinTrustFileInfo>(pFile);
-                Marshal.FreeHGlobal(pFile);
-            }
+            return new CheckResult(CheckStatus.Warn, "Couldn't finish checking your startup entries.", techCommand, DescribeException(exception));
         }
     }
 }
