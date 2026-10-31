@@ -62,6 +62,9 @@
          checked checkboxes, the brand-mark badge) ── -->
     <Color x:Key="Vitals.OnAccent.Color">#2A1200</Color>
 
+    <!-- ── Dimming layer drawn over the app behind a modal window ── -->
+    <Color x:Key="Vitals.Scrim.Color">#CC000000</Color>
+
     <!-- ══════════════════ Brushes (derived from the colors above) ══════════════════ -->
 
     <LinearGradientBrush x:Key="Vitals.Bg.Brush" StartPoint="0,0" EndPoint="1,1">
@@ -70,6 +73,7 @@
         <GradientStop Color="{StaticResource Vitals.Bg.Color}" Offset="0.55"/>
         <GradientStop Color="{StaticResource Vitals.Bg.Color}" Offset="1"/>
     </LinearGradientBrush>
+    <SolidColorBrush x:Key="Vitals.Scrim.Brush" Color="{StaticResource Vitals.Scrim.Color}"/>
     <SolidColorBrush x:Key="Vitals.Surface.Brush" Color="{StaticResource Vitals.Surface.Color}"/>
     <SolidColorBrush x:Key="Vitals.Surface2.Brush" Color="{StaticResource Vitals.Surface2.Color}"/>
     <SolidColorBrush x:Key="Vitals.Surface3.Brush" Color="{StaticResource Vitals.Surface3.Color}"/>

@@ -40,6 +40,13 @@ public partial class CheckItemViewModel : ObservableObject
     public string? TechCommand { get; private set; }
     public string? TechDetail { get; private set; }
 
+    /// <summary>The full lists the check found (open ports, scheduled tasks), kept for the HTML report; the on-screen result stays short.</summary>
+    public IReadOnlyList<ReportTable> Tables { get; private set; } = [];
+
+    /// <summary>This check as it should read in a report. Guidance is only offered when something needs attention.</summary>
+    public ReportEntry ToReportEntry() =>
+        new(Label, Status, ResultText, Status is CheckStatus.Warn or CheckStatus.Bad ? _definition.FixInfoText : null, TechCommand, TechDetail, Tables);
+
     public bool HasFixMessage => FixMessage.Length > 0;
 
     partial void OnStatusChanged(CheckStatus value) => OnPropertyChanged(nameof(ShowFixArea));
@@ -53,6 +60,7 @@ public partial class CheckItemViewModel : ObservableObject
         ShowResult = false;
         FixApplied = false;
         FixMessage = string.Empty; // otherwise guidance opened on a previous run stays showing after "Run again"
+        Tables = [];
     }
 
     public async Task CompleteAsync()
@@ -64,6 +72,7 @@ public partial class CheckItemViewModel : ObservableObject
             ResultText = result.ResultText;
             TechCommand = result.TechCommand;
             TechDetail = result.TechDetail;
+            Tables = result.Tables ?? [];
         }
         else
         {
@@ -71,6 +80,7 @@ public partial class CheckItemViewModel : ObservableObject
             ResultText = _definition.ResultText;
             TechCommand = null;
             TechDetail = null;
+            Tables = [];
         }
         ShowResult = true;
     }

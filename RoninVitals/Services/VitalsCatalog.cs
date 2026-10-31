@@ -137,7 +137,7 @@ public static class VitalsCatalog
                     Checks = new List<CheckDefinition>
                     {
                         new() { Label = "Checking CPU load", ScriptedStatus = CheckStatus.Pass, ResultText = "CPU usage is normal.", FixLabel = "See what to do", RealCheck = SystemDiagnosticsService.CheckCpuLoad,
-                            FixInfoText = "A busy CPU means something is working hard right now. Press Ctrl+Shift+Esc to open Task Manager, click the CPU column to sort, and see what's at the top. If it's a program you're using, that's normal. If it's something you don't recognise, or the CPU stays high while you're idle, close that program, and if it keeps coming back run the Scan suspicious files option on the Home screen. The \"Something's using too much CPU or RAM\" card digs further." },
+                            FixInfoText = "A busy CPU means something is working hard right now. Press Ctrl+Shift+Esc to open Task Manager, click the CPU column to sort, and see what's at the top. If it's a program you're using, that's normal. If it's something you don't recognise, or the CPU stays high while you're idle, close that program, and if it keeps coming back run the Security checks option on the Home screen. The \"Something's using too much CPU or RAM\" card digs further." },
                         new() { Label = "Checking memory usage", ScriptedStatus = CheckStatus.Warn, ResultText = "RAM usage is high - several programs are competing for memory.", FixLabel = "Show what's using RAM", RealCheck = SystemDiagnosticsService.CheckMemoryUsage,
                             FixInfoText = "When memory runs short, Windows starts using the much slower drive instead, and everything feels sluggish. Press Ctrl+Shift+Esc, open Task Manager, and click the Memory column to see the biggest users. Browsers with many tabs are the usual cause: close tabs you aren't using. Restarting the PC also clears memory that programs failed to give back. If your memory is high even with few programs open, adding more RAM is the lasting fix." },
                         new() { Label = "Checking disk activity", ScriptedStatus = CheckStatus.Pass, ResultText = "Disk activity is normal.", FixLabel = "See what to do", RealCheck = SystemDiagnosticsService.CheckDiskActivity,
@@ -165,7 +165,7 @@ public static class VitalsCatalog
                         new() { Label = "Checking how hard the CPU is working", ScriptedStatus = CheckStatus.Pass, ResultText = "CPU usage is normal.", FixLabel = "See what to do", RealCheck = SystemDiagnosticsService.CheckCpuLoad,
                             FixInfoText = "A CPU that works hard makes heat, and heat makes fans loud. Open Task Manager (Ctrl+Shift+Esc), sort by CPU, and close what you don't need. Games and video editing legitimately run the fans hard. A PC that's loud while doing nothing has a program stuck in the background, so check the next item." },
                         new() { Label = "Checking what is keeping the CPU busy", ScriptedStatus = CheckStatus.Warn, ResultText = "One background app is using significant CPU.", FixLabel = "Show top processes", RealCheck = SystemDiagnosticsService.CheckTopCpuConsumer,
-                            FixInfoText = "Open Task Manager (Ctrl+Shift+Esc) and sort the Processes tab by CPU. If the busy program is one you don't need, right-click it and choose End task. If it's a Windows process such as Antimalware Service Executable or Windows Update, it usually settles after a scan or update finishes. If it never settles, or you don't recognise the name, run the Scan suspicious files option on the Home screen." },
+                            FixInfoText = "Open Task Manager (Ctrl+Shift+Esc) and sort the Processes tab by CPU. If the busy program is one you don't need, right-click it and choose End task. If it's a Windows process such as Antimalware Service Executable or Windows Update, it usually settles after a scan or update finishes. If it never settles, or you don't recognise the name, run the Security checks option on the Home screen." },
                         new() { Label = "Checking your power plan", ScriptedStatus = CheckStatus.Pass, ResultText = "Your power plan lets the CPU cool down when it's idle.", FixLabel = "How to change it", RealCheck = ThermalDiagnosticsService.CheckPowerPlanForHeat,
                             FixInfoText = "High performance and Ultimate performance keep the CPU running fast even when you're not busy, which costs heat and fan noise. Open Settings > System > Power & battery and set Power mode to Balanced. The PC stays just as quick when you need it, because Balanced speeds up on demand." },
                     }
@@ -250,7 +250,7 @@ public static class VitalsCatalog
                     Checks = new List<CheckDefinition>
                     {
                         new() { Label = "Checking top CPU consumers", ScriptedStatus = CheckStatus.Warn, ResultText = "One background app is using significant CPU.", FixLabel = "Show top processes", RealCheck = SystemDiagnosticsService.CheckTopCpuConsumer,
-                            FixInfoText = "Open Task Manager (Ctrl+Shift+Esc) and sort the Processes tab by CPU. If the busy program is one you don't need, right-click it and choose End task. If it's a Windows process such as Antimalware Service Executable or Windows Update, it usually settles after a scan or update finishes. If it never settles, or you don't recognise the name, run the Scan suspicious files option on the Home screen." },
+                            FixInfoText = "Open Task Manager (Ctrl+Shift+Esc) and sort the Processes tab by CPU. If the busy program is one you don't need, right-click it and choose End task. If it's a Windows process such as Antimalware Service Executable or Windows Update, it usually settles after a scan or update finishes. If it never settles, or you don't recognise the name, run the Security checks option on the Home screen." },
                         new() { Label = "Checking top memory consumers", ScriptedStatus = CheckStatus.Pass, ResultText = "No single program is hogging memory.", FixLabel = "Show top processes", RealCheck = ProcessDiagnosticsService.CheckTopMemoryConsumer,
                             FixInfoText = "Open Task Manager (Ctrl+Shift+Esc) and click the Memory column. A browser is often the biggest user because every tab and extension counts: close tabs, and disable extensions you don't use. A program whose memory keeps climbing the longer it runs has a memory leak: restarting it frees the memory, and updating it may fix the leak for good." },
                         new() { Label = "Checking for programs that stopped responding", ScriptedStatus = CheckStatus.Pass, ResultText = "Every open program is responding.", FixLabel = "How to close a frozen program", RealCheck = ProcessDiagnosticsService.CheckNotResponding,
@@ -320,24 +320,26 @@ public static class VitalsCatalog
             }
         },
         // Reached from its own card at the bottom of the home screen, not one of the four area tiles.
-        // Two options: Windows' own antivirus (a real engine, the trustworthy verdict) and Vitals' own
-        // look for suspicious-looking files (finds things worth a second look, never claims a verdict).
+        // Windows' own antivirus (a real engine, the trustworthy verdict), Vitals' own look for suspicious-looking
+        // files and for open ports and scheduled tasks (things worth a second look, never a verdict), and a run-everything option.
         new Section
         {
             Key = SectionKey.Security,
-            Label = "Scan suspicious files",
-            Description = "Look for malware and risky files",
+            Label = "Security checks",
+            Description = "Look for malware, risky files, open ports and scheduled tasks",
             Headline = "How would you like to scan?",
             AccentBrushKey = "Vitals.Purple.Brush",
             AccentDimBrushKey = "Vitals.Purple.Brush",
-            Symptoms = WithRunBoth(new List<Symptom>
+            Symptoms = WithRunAll(new List<Symptom>
             {
                 new Symptom
                 {
-                    Id = "defender", Title = "Scan with Microsoft Defender",
-                    Subtitle = "Use Windows' built-in antivirus to scan the places malware usually hides.",
+                    Id = "defender", Title = "Scan with Microsoft Defender", ReportTitle = SecurityReportTitle,
+                    Subtitle = "See which antivirus protects this PC, then use Windows' built-in one to scan the places malware usually hides.",
                     Checks = new List<CheckDefinition>
                     {
+                        new() { Label = "Checking which antivirus protects this PC", ScriptedStatus = CheckStatus.Pass, ResultText = "Your antivirus is on and up to date.", FixLabel = "What this means", RealCheck = AntivirusDiagnosticsService.CheckAntivirus,
+                            FixInfoText = "Windows keeps a list of the antivirus programs on a PC, and each one tells Windows its name, whether it is switched on and whether its virus definitions are current. The report shows that list. If nothing is switched on, open Windows Security (press the Windows key, type \"Windows Security\") and turn on Virus & threat protection, or open your antivirus and switch it on; if it says expired, renew or replace it. If the definitions are out of date, open the antivirus and run its update. If two programs are on at once, keep one and uninstall the other from Settings > Apps, because two can slow the PC and fight over the same files. Windows only lists programs that register themselves, so one it doesn't know about won't appear here." },
                         new() { Label = "Checking Microsoft Defender is on", ScriptedStatus = CheckStatus.Pass, ResultText = "Microsoft Defender is on and watching in real time.", FixLabel = "See how to turn it on", RealCheck = SecurityScanService.CheckDefenderStatus,
                             FixInfoText = "Open Windows Security (press the Windows key, type \"Windows Security\"), choose Virus & threat protection, and turn on Real-time protection. If you use another antivirus (Norton, McAfee, Bitdefender and so on), Defender stays off or in standby on purpose - that's normal, and you should run that program's scan instead. If Defender won't turn on and you don't have another antivirus, a technician should look, since malware sometimes switches it off." },
                         new() { Label = "Checking virus definitions are current", ScriptedStatus = CheckStatus.Pass, ResultText = "Defender's virus definitions were updated today.", FixLabel = "Update virus definitions", RealCheck = SecurityScanService.CheckDefenderDefinitions, Tier = FixTier.SafeAutoFix, ApplyFix = SecurityScanService.UpdateDefenderDefinitionsAsync },
@@ -347,7 +349,7 @@ public static class VitalsCatalog
                 },
                 new Symptom
                 {
-                    Id = "vitalsfiles", Title = "Check for suspicious-looking files",
+                    Id = "vitalsfiles", Title = "Check for suspicious-looking files", ReportTitle = SecurityReportTitle,
                     Subtitle = "Vitals looks through Downloads, Desktop, Temp and startup for disguised or unsigned programs.",
                     Checks = new List<CheckDefinition>
                     {
@@ -359,21 +361,35 @@ public static class VitalsCatalog
                             FixInfoText = "Real software installs into Program Files and starts from there. Something set to launch with Windows from a Temp or Downloads folder is a common malware pattern: it dropped itself there and registered to survive a restart. Open Task Manager (Ctrl+Shift+Esc), go to the Startup apps tab, and turn off anything you don't recognise. Then run the Microsoft Defender scan. If an entry keeps coming back, a technician should look." },
                     }
                 },
+                new Symptom
+                {
+                    Id = "portstasks", Title = "Check open ports and scheduled tasks", ReportTitle = SecurityReportTitle,
+                    Subtitle = "See which programs are listening for connections and which tasks Windows will run by themselves.",
+                    Checks = new List<CheckDefinition>
+                    {
+                        new() { Label = "Looking at which programs have ports open", ScriptedStatus = CheckStatus.Pass, ResultText = "Only Windows itself is listening for connections.", FixLabel = "What this means", RealCheck = PortDiagnosticsService.CheckOpenPorts,
+                            FixInfoText = "An open port is a door a program opens so other programs or devices can connect to it. Games, chat apps, media servers and device software (keyboards, lights, audio) open them on purpose, so most entries are normal. The report lists each program with its ports, what it says it is, who made it, where it lives and whether its digital signature is valid. For a program you don't recognise: look up its file name, check the location (Program Files is normal; Temp or Downloads is not), and if you don't use it, uninstall it from Settings > Apps. Windows Firewall may block the connections anyway; to see your firewall rules, open Windows Defender Firewall with Advanced Security. If an unsigned program in an odd folder keeps its port open, run the Microsoft Defender scan and have a technician look." },
+                        new() { Label = "Looking through the scheduled tasks", ScriptedStatus = CheckStatus.Pass, ResultText = "Nothing unusual is scheduled.", FixLabel = "What this means", RealCheck = ScheduledTaskDiagnosticsService.CheckScheduledTasks,
+                            FixInfoText = "A scheduled task is a job that Windows or a program set up to run by itself at a time or event: updaters, backups, clean-up, sign-in helpers. Most are routine, and the report shows each one's description, what it runs, when it starts and stops, and when it last ran. Be wary of one that starts a program from a Temp or Downloads folder, or hides what it runs behind an encoded command. To look closer, press Win+R, type taskschd.msc and open Task Scheduler Library. To stop one, right-click it and choose Disable, which you can undo, rather than deleting it. Then run the Microsoft Defender scan, and if a task keeps coming back, a technician should look." },
+                    }
+                },
             })
         },
     };
 
+    private const string SecurityReportTitle = "Security report";
+
     /// <summary>
-    /// Appends a "run both scans" option made from the first two symptoms' own checks, so it can never
-    /// drift out of sync with them. Defender goes first because its verdict matters most; Vitals' own
-    /// check then covers the suspicious-looking files Defender may not flag.
+    /// Appends a "run every check" option made from the other symptoms' own checks, so it can never
+    /// drift out of sync with them. Defender goes first because its verdict matters most; the rest
+    /// follow in the order the options are listed. The one report then covers everything.
     /// </summary>
-    private static List<Symptom> WithRunBoth(List<Symptom> scans)
+    private static List<Symptom> WithRunAll(List<Symptom> scans)
     {
         scans.Add(new Symptom
         {
-            Id = "scanboth", Title = "Run both scans",
-            Subtitle = "Microsoft Defender first, then Vitals' own check, one after the other.",
+            Id = "scanall", Title = "Run every check", ReportTitle = SecurityReportTitle,
+            Subtitle = "Defender, Vitals' file checks, open ports and scheduled tasks, one after the other, then one report.",
             Checks = scans.SelectMany(scan => scan.Checks).ToList(),
         });
         return scans;

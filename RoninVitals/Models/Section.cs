@@ -7,7 +7,7 @@ public enum SectionKey
     Software,
     System,
 
-    /// <summary>"Scan suspicious files" - reached from its own card on the home screen, not one
+    /// <summary>"Security checks" - reached from its own card on the home screen, not one
     /// of the four area tiles.</summary>
     Security
 }

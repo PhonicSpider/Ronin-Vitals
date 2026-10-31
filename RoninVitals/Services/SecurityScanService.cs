@@ -76,28 +76,18 @@ public static class SecurityScanService
 
     private static string FirstLineOf(string text) => text.Split('\n', 2)[0].Trim();
 
-    /// <summary>Non-Defender antivirus that Windows Security Center reports as switched on (productState bit 0x1000).</summary>
+    /// <summary>Non-Defender antivirus that Windows Security Center reports as switched on.</summary>
     private static OtherAntivirus ReadOtherActiveAntivirus()
     {
-        var activeNames = new List<string>();
-        var seen = new List<string>();
         try
         {
-            using var searcher = new ManagementObjectSearcher(@"root\SecurityCenter2", "SELECT displayName, productState FROM AntiVirusProduct");
-            foreach (ManagementObject product in searcher.Get())
-            {
-                var name = product["displayName"] as string ?? "Unknown antivirus";
-                var productState = Convert.ToInt32(product["productState"] ?? 0);
-                var isOn = (productState & 0xF000) == 0x1000;
-                seen.Add($"{name} (state 0x{productState:X6}, {(isOn ? "on" : "off")})");
-                if (isOn && !name.Contains("Defender", StringComparison.OrdinalIgnoreCase) && !activeNames.Contains(name)) activeNames.Add(name);
-            }
-            var detail = seen.Count == 0 ? "Security Center lists no antivirus products." : "Security Center: " + string.Join("; ", seen.Distinct());
-            return new OtherAntivirus(activeNames, detail);
+            var products = AntivirusDiagnosticsService.ReadProducts();
+            var activeNames = products.Where(product => product.IsOn && !product.IsMicrosoft).Select(product => product.Name).ToList();
+            return new OtherAntivirus(activeNames, AntivirusDiagnosticsService.DescribeForTechnician(products));
         }
         catch (Exception exception) when (exception is ManagementException or UnauthorizedAccessException or InvalidCastException)
         {
-            return new OtherAntivirus(activeNames, $"Couldn't read Security Center: {exception.Message}");
+            return new OtherAntivirus([], $"Couldn't read Security Center: {exception.Message}");
         }
     }
 

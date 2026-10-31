@@ -17,17 +17,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="Assets\icon.ico" Condition="Exists('Assets\icon.ico')"/>
-    <Resource Include="Assets\icon.png" Condition="Exists('Assets\icon.png')"/>
+    <Resource Include="Assets\icon.ico" Condition="Exists('Assets\icon.ico')" />
+    <Resource Include="Assets\icon.png" Condition="Exists('Assets\icon.png')" />
     <!-- Space Grotesk (display), Inter (body), IBM Plex Mono (data) - static OFL-licensed
          weight instances pulled from Google Fonts, not the variable-font originals, since
          WPF's font stack doesn't reliably address named instances on a variable font's
          weight axis. See Assets\Fonts\*-OFL.txt for each family's license. -->
-    <Resource Include="Assets\Fonts\*.ttf"/>
+    <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <!-- Shows a report inside the app with the same HTML the saved file contains (scripts and navigation switched off). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <!-- Read-only WMI access for real diagnostics (drive health via MSFT_PhysicalDisk, etc). -->
     <PackageReference Include="System.Management" Version="8.0.0" />
     <!-- Read-only service status checks (Windows Update service, etc). -->

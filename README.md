@@ -28,22 +28,26 @@ Flip **Tech Mode** on and the checklist slides left while a **Technician Console
 
 The checklist on the left stays exactly as a normal user would see it. Tech Mode only adds, it never changes what the regular view says.
 
-### Scan suspicious files
+### Security checks
 
-A separate card at the bottom of the home screen opens a scan screen with three options: scan with **Microsoft Defender**, run **Vitals' own file check**, or **both**.
+A separate card at the bottom of the home screen opens a security screen with four options: scan with **Microsoft Defender**, run **Vitals' own file check**, **check open ports and scheduled tasks**, or **run every check**.
 
 ![The three scan options](docs/screenshots/scan-options.png)
 
-- **Microsoft Defender** checks that Defender is on, that its virus definitions are current (with a one-click "update now"), and runs its quick scan. Vitals drives Defender rather than pretending to be an antivirus. If you use another antivirus such as ESET, Norton or McAfee, Windows keeps Defender off on purpose, and Vitals says so and points you to that program instead of raising a false alarm.
+- **Microsoft Defender** starts by naming the antivirus that protects this PC, whichever one it is (Windows keeps a list of them, and Vitals shows each one's status, whether its virus definitions are current, who made it and where it lives). It warns if nothing is on, if the one that is on has old definitions, or if two are on at once. Then it checks that Defender is on, that its virus definitions are current (with a one-click "update now"), and runs its quick scan. Vitals drives Defender rather than pretending to be an antivirus. If you use another antivirus such as ESET, Norton or McAfee, Windows keeps Defender off on purpose, and Vitals says so and points you to that program instead of raising a false alarm.
 - **Vitals' own file check** looks for things worth a second look: programs disguised as documents (`invoice.pdf.exe`, or names that use a hidden right-to-left character), recent unsigned programs in Downloads, Desktop and Temp, and startup entries that launch from Temp or Downloads. It reports "worth a look", never "this is malware", because it cannot tell the difference.
 
-Neither option deletes or moves anything. Defender handles what it is sure about by its own normal policy.
+- **Open ports and scheduled tasks.** The port check lists every program that is listening for connections, other than Windows itself: its name, what it says it is (or "No description published"), who made it, where it lives, whether its digital signature is valid, and which ports are open to your network and which only to this PC. It warns only for a program that other devices can reach and that has no verified signature or runs from an odd folder, so a signed game launcher does not raise an alarm. The task check reads every task in Windows' Task Scheduler and lists the ones set to run by themselves, with each task's description, what it runs, when it starts, its start and end times if it sets them, when it last ran and next will, which account it runs as, and when Windows stops it. It flags only a task that starts a program from Temp or Downloads, runs an encoded PowerShell command, or hides a download.
+
+**Report.** After any run on this screen, **View report** opens the results in a window inside the app, in the same spirit as the report Windows makes for the battery. Nothing is saved at that point. It shows a summary, a one-line result for every check, then each check in full with what to do about it, the complete lists of ports and tasks, and the technical detail behind each result. **Go back** closes the window and the report is gone; **Save this Report** writes the same page to `Documents\Ronin Vitals\Reports` as one HTML file you can open in any browser. The page has no script and loads nothing from the internet, in the app's own colours and fonts, and the window inside the app can't follow links or download anything. It includes your computer name and program locations, so look it over before sharing it. The window uses Microsoft Edge WebView2, which comes with Windows 11 and current Windows 10; if it is missing, the report can still be saved and opened in your browser.
+
+None of this deletes, moves, disables or closes anything. Defender handles what it is sure about by its own normal policy.
 
 ![Both scans with Tech Mode on, on a PC that uses ESET](docs/screenshots/scan-suspicious-files.png)
 
 ## What works today
 
-Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. Every check on every card looks at your PC for real; nothing shows a made-up result. The separate **Scan suspicious files** screen works the same way. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
+Four areas and 14 symptom cards: **Network**, **Hardware**, **Software**, **System**. Every check on every card looks at your PC for real; nothing shows a made-up result. The separate **Security checks** screen works the same way, and is the only one that makes a report so far. The Defender scan was verified on a PC that uses ESET, where it correctly steps aside; the path where Defender itself is the active antivirus has been tested only in unit tests so far.
 
 | Card | Checks |
 | --- | --- |
@@ -66,7 +70,7 @@ A few things worth knowing about what the checks can and cannot see:
 
 - **Temperature is a motherboard sensor, not the CPU core.** Reading the real CPU temperature needs a kernel driver, which is a bigger trust decision than this project has made so far. The check says so in its result, and the throttling check (Windows' own record of the CPU being slowed down) is the better signal.
 - **Windows can't read fan speed** on most PCs. The fan check reports what Windows lists, says what it cannot see, and the fix button explains how to check fans by ear and clean them.
-- **Some checks need administrator rights:** the system file scan, Windows' repair store check, the disk-check flag and the drive wear counters. The app asks for administrator rights when it starts, so they normally just work. If it is ever run without them, those checks say so instead of guessing. The scan, repair-store, disk-flag and wear checks have so far been verified with sample tool output in unit tests; the other checks have also been run against a real PC.
+- **Some checks need administrator rights:** the system file scan, Windows' repair store check, the disk-check flag and the drive wear counters. The app asks for administrator rights when it starts, so they normally just work. If it is ever run without them, those checks say so instead of guessing. The scan, repair-store, disk-flag and wear checks have so far been verified with sample tool output in unit tests; the other checks have also been run against a real PC. The port check works without administrator rights, but then Windows hides where a few of its own programs live, so those can show "Couldn't be read" and be highlighted; with administrator rights (the normal case) they resolve.
 - **Most fix buttons explain what to do rather than doing it.** A button only changes something when the change is small and safe (see Safety below). Repairs such as clearing the Windows Update cache or running DISM are explained step by step instead, because Vitals cannot undo them.
 
 The driver-update screen is a demo: it does not install anything.

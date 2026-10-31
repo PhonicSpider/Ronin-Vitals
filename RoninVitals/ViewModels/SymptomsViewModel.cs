@@ -10,7 +10,7 @@ public partial class SymptomsViewModel : ObservableObject
 {
     private readonly Action _navigateHome;
 
-    public SymptomsViewModel(SectionKey sectionKey, Action navigateHome)
+    public SymptomsViewModel(SectionKey sectionKey, Action navigateHome, Action<ReportPreviewViewModel>? showReport = null)
     {
         _navigateHome = navigateHome;
         var section = VitalsCatalog.GetSection(sectionKey);
@@ -18,7 +18,7 @@ public partial class SymptomsViewModel : ObservableObject
         Headline = section.Headline;
 
         Cards = new ObservableCollection<SymptomCardViewModel>(
-            section.Symptoms.Select(symptom => new SymptomCardViewModel(symptom, ExpandCard, CollapseExpanded)));
+            section.Symptoms.Select(symptom => new SymptomCardViewModel(symptom, ExpandCard, CollapseExpanded, showReport)));
     }
 
     public string SectionLabel { get; }
