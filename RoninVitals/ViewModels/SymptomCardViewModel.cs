@@ -11,12 +11,14 @@ public partial class SymptomCardViewModel : ObservableObject
     private readonly Symptom _symptom;
     private readonly Action<SymptomCardViewModel> _requestExpand;
     private readonly Action _requestCollapse;
+    private readonly Action<ReportPreviewViewModel>? _showReport;
 
-    public SymptomCardViewModel(Symptom symptom, Action<SymptomCardViewModel> requestExpand, Action requestCollapse)
+    public SymptomCardViewModel(Symptom symptom, Action<SymptomCardViewModel> requestExpand, Action requestCollapse, Action<ReportPreviewViewModel>? showReport = null)
     {
         _symptom = symptom;
         _requestExpand = requestExpand;
         _requestCollapse = requestCollapse;
+        _showReport = showReport;
         Checks = new ObservableCollection<CheckItemViewModel>(
             symptom.Checks.Select(check => new CheckItemViewModel(check)));
     }
@@ -62,8 +64,25 @@ public partial class SymptomCardViewModel : ObservableObject
 
     public string RunButtonLabel => IsRunning ? "Checking…" : HasRunOnce ? "Run again" : "Run diagnostic";
 
-    partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(RunButtonLabel));
-    partial void OnHasRunOnceChanged(bool value) => OnPropertyChanged(nameof(RunButtonLabel));
+    [ObservableProperty] private bool _isCreatingReport;
+
+    /// <summary>The "View report" button shows once a run has finished, on cards that offer a report.</summary>
+    public bool ShowReportButton => _symptom.ReportTitle is not null && HasRunOnce && !IsRunning;
+    public string ReportButtonLabel => IsCreatingReport ? "Preparing report…" : "View report";
+
+    partial void OnIsRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RunButtonLabel));
+        OnPropertyChanged(nameof(ShowReportButton));
+    }
+
+    partial void OnHasRunOnceChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RunButtonLabel));
+        OnPropertyChanged(nameof(ShowReportButton));
+    }
+
+    partial void OnIsCreatingReportChanged(bool value) => OnPropertyChanged(nameof(ReportButtonLabel));
 
     [RelayCommand]
     private void Expand()
@@ -151,6 +170,26 @@ public partial class SymptomCardViewModel : ObservableObject
             ? "Everything checks out — no issues found here."
             : $"Found {issues} thing{(issues > 1 ? "s" : "")} worth fixing above.";
         ShowSummary = true;
+    }
+
+    /// <summary>Shows the results of the run just finished as a report in the app. Nothing is saved until the user asks, and nothing on the PC is changed.</summary>
+    [RelayCommand]
+    private async Task ViewReportAsync()
+    {
+        if (_symptom.ReportTitle is not { } reportTitle || IsCreatingReport) return;
+
+        IsCreatingReport = true;
+        var entries = Checks.Select(check => check.ToReportEntry()).ToList();
+        try
+        {
+            var createdAt = DateTimeOffset.Now;
+            var html = await Task.Run(() => ReportService.BuildHtml(reportTitle, Title, entries, createdAt));
+            _showReport?.Invoke(new ReportPreviewViewModel(reportTitle, html, createdAt));
+        }
+        finally
+        {
+            IsCreatingReport = false;
+        }
     }
 
     /// <summary>Fire-and-forget from RunDiagnosticAsync - deliberately not awaited inline, so the

@@ -25,6 +25,9 @@
         <DataTemplate DataType="{x:Type vm:DriversViewModel}">
             <views:DriversView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ReportPreviewViewModel}">
+            <views:ReportPreviewView/>
+        </DataTemplate>
 
         <!-- Network/CPU/RAM row - fixed-width pills in a WrapPanel. The Viewbox needs an
              explicit Width here: WrapPanel measures children with infinite available width,
@@ -153,7 +156,8 @@
         <!-- ── Active screen host (crossfades on navigation, see MainWindow.xaml.cs).
              Each view owns its own ScrollViewer so screens that need a viewport-pinned
              element (the driver update sticky bar) can keep it outside the scroll region. ── -->
-        <ContentControl Grid.Row="1" x:Name="ScreenHost" Background="Transparent" Content="{Binding CurrentView}"/>
+        <ContentControl Grid.Row="1" x:Name="ScreenHost" Background="Transparent" Content="{Binding CurrentView}"
+                        IsEnabled="{Binding IsReportClosed}"/>
 
         <!-- ── Action log - collapsed until the first fix is applied (ShellViewModel.HasLogEntries),
              then stays visible/scrollable for the rest of the session so the user can review what
@@ -204,5 +208,8 @@
                 </ScrollViewer>
             </DockPanel>
         </Border>
+
+        <!-- ── Report window: covers the whole app while a report is open; empty (and click-through) otherwise. ── -->
+        <ContentControl Grid.Row="0" Grid.RowSpan="3" Content="{Binding ReportPreview}"/>
     </Grid>
 </Window>

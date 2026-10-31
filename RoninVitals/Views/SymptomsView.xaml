@@ -335,6 +335,13 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </Border>
+
+                                <!-- Only on cards with a ReportTitle (the Security card) and only after a run has finished. -->
+                                <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowReportButton, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="{Binding ReportButtonLabel}" Style="{StaticResource Vitals.FixButton}" HorizontalAlignment="Left"
+                                            Command="{Binding ViewReportCommand}"
+                                            IsEnabled="{Binding IsCreatingReport, Converter={StaticResource InvBool}}"/>
+                                </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>

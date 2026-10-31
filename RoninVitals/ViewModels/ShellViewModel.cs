@@ -72,6 +72,14 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty] private object _currentView;
     [ObservableProperty] private bool _hasLogEntries;
 
+    /// <summary>The report window drawn over the whole app while a report is being looked at; null when none is open.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReportClosed))]
+    private ReportPreviewViewModel? _reportPreview;
+
+    /// <summary>Lets the screen behind the report window be switched off while the report is open.</summary>
+    public bool IsReportClosed => ReportPreview is null;
+
     /// <summary>System uptime as "Days:Hours:Minutes:Seconds", shown as floating text in the top bar (not
     /// a vitals tile - it has no gauge). Refreshed by its own timer so the seconds tick evenly.</summary>
     [ObservableProperty] private string _uptimeText = string.Empty;
@@ -81,7 +89,13 @@ public partial class ShellViewModel : ObservableObject
 
     private void NavigateHome() => CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
 
-    private void NavigateToSection(SectionKey key) => CurrentView = new SymptomsViewModel(key, NavigateHome);
+    private void NavigateToSection(SectionKey key) => CurrentView = new SymptomsViewModel(key, NavigateHome, ShowReport);
+
+    private void ShowReport(ReportPreviewViewModel preview)
+    {
+        preview.CloseRequested += (_, _) => ReportPreview = null;
+        ReportPreview = preview;
+    }
 
     private async void NavigateToDrivers()
     {

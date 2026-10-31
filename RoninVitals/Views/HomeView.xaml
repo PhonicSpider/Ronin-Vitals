@@ -205,9 +205,9 @@
                     </Viewbox>
                 </Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Scan suspicious files" FontFamily="{StaticResource Vitals.Font.Display}"
+                    <TextBlock Text="Security checks" FontFamily="{StaticResource Vitals.Font.Display}"
                                FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Vitals.Text.Brush}"/>
-                    <TextBlock Text="Look for malware and for disguised or risky files - with Windows Defender, Vitals' own check, or both together"
+                    <TextBlock Text="Look for malware, risky files, open ports and scheduled tasks - then save a report you can go through later"
                                Style="{StaticResource Vitals.Text.Body}" FontSize="11.5" Margin="0,2,0,0"/>
                 </StackPanel>
             </Grid>
