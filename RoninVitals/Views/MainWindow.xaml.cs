@@ -25,16 +25,23 @@ public partial class MainWindow : Window
         base.OnClosing(e);
         if (_closeApproved || e.Cancel) return;
 
-        // Hold the close while the current screen is asked. A second request made while the question is
-        // open is ignored, so the screen is never asked twice at once.
-        e.Cancel = true;
-        if (_closeQuestionOpen) return;
+        if (_closeQuestionOpen)
+        {
+            // The user asked to close again while the first question is still open. Let this request
+            // through rather than ignoring it, so a screen that never answers cannot make the window
+            // impossible to close. The first question's answer is dropped when it arrives (see below).
+            _closeApproved = true;
+            return;
+        }
 
+        e.Cancel = true;
         _closeQuestionOpen = true;
         try
         {
             if (DataContext is not ShellViewModel shell || await shell.CanCloseAsync())
             {
+                // A second request may already have closed the window while this answer was pending.
+                if (_closeApproved) return;
                 _closeApproved = true;
                 Close();
             }

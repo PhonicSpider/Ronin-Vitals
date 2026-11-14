@@ -12,6 +12,21 @@ public class LeaveGuardTests
         public Task<bool> CanLeaveAsync() => Task.FromResult(_answer);
     }
 
+    private sealed class ThrowingScreen : ICanLeave
+    {
+        public Task<bool> CanLeaveAsync() => throw new InvalidOperationException("broken screen");
+    }
+
+    private sealed class FaultedScreen : ICanLeave
+    {
+        public Task<bool> CanLeaveAsync() => Task.FromException<bool>(new InvalidOperationException("broken screen"));
+    }
+
+    private sealed class CancelledScreen : ICanLeave
+    {
+        public Task<bool> CanLeaveAsync() => Task.FromCanceled<bool>(new CancellationToken(true));
+    }
+
     [Fact]
     public async Task CanLeaveAsync_IsTrue_ForNull()
     {
@@ -34,5 +49,23 @@ public class LeaveGuardTests
     public async Task CanLeaveAsync_ReturnsTheGuardsAnswer_True()
     {
         Assert.True(await LeaveGuard.CanLeaveAsync(new FakeScreen(true)));
+    }
+
+    [Fact]
+    public async Task CanLeaveAsync_IsTrue_WhenTheGuardThrows()
+    {
+        Assert.True(await LeaveGuard.CanLeaveAsync(new ThrowingScreen()));
+    }
+
+    [Fact]
+    public async Task CanLeaveAsync_IsTrue_WhenTheGuardReturnsAFaultedTask()
+    {
+        Assert.True(await LeaveGuard.CanLeaveAsync(new FaultedScreen()));
+    }
+
+    [Fact]
+    public async Task CanLeaveAsync_IsTrue_WhenTheGuardIsCancelled()
+    {
+        Assert.True(await LeaveGuard.CanLeaveAsync(new CancelledScreen()));
     }
 }
