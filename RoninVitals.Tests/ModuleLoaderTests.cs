@@ -12,10 +12,12 @@ public class ModuleLoaderTests
         public bool Available { get; set; } = true;
         public bool ThrowOnAvailability { get; set; }
         public bool ThrowOnInitialize { get; set; }
+        public bool ThrowOnCards { get; set; }
         public bool Initialized { get; private set; }
 
         public bool IsAvailable => ThrowOnAvailability ? throw new InvalidOperationException("broken") : Available;
-        public IReadOnlyList<ModuleCard> Cards { get; set; } = [];
+        public IReadOnlyList<ModuleCard> CardList { get; set; } = [];
+        public IReadOnlyList<ModuleCard> Cards => ThrowOnCards ? throw new InvalidOperationException("broken") : CardList;
         public ResourceDictionary? Resources { get; set; }
 
         public void Initialize(ModuleContext context)
@@ -119,5 +121,58 @@ public class ModuleLoaderTests
         Assert.Equal(new IFeatureModule[] { good }, result.Modules);
         Assert.Single(result.Problems);
         Assert.True(good.Initialized);
+    }
+
+    private static ModuleCard Card(string title) => new(title, "Subtitle", "M0,0", () => new object());
+
+    [Fact]
+    public void CollectCards_KeepsOrderAcrossModules()
+    {
+        var a = Card("A");
+        var b = Card("B");
+        var c = Card("C");
+
+        var result = ModuleLoader.CollectCards([new FakeModule { CardList = [a, b] }, new FakeModule { CardList = [c] }]);
+
+        Assert.Equal(new[] { a, b, c }, result.Cards);
+        Assert.Empty(result.Problems);
+    }
+
+    [Fact]
+    public void CollectCards_SkipsAModuleWhoseCardsGetterThrows_AndKeepsTheOthers()
+    {
+        var a = Card("A");
+        var c = Card("C");
+
+        var result = ModuleLoader.CollectCards(
+        [
+            new FakeModule { CardList = [a] },
+            new FakeModule { ThrowOnCards = true },
+            new FakeModule { CardList = [c] },
+        ]);
+
+        Assert.Equal(new[] { a, c }, result.Cards);
+        Assert.Single(result.Problems);
+    }
+
+    [Fact]
+    public void CollectCards_TreatsNullCardsAsEmpty()
+    {
+        var a = Card("A");
+
+        var result = ModuleLoader.CollectCards([new FakeModule { CardList = null! }, new FakeModule { CardList = [a] }]);
+
+        Assert.Equal(new[] { a }, result.Cards);
+    }
+
+    [Fact]
+    public void CollectCards_SkipsNullCardEntries()
+    {
+        var a = Card("A");
+        var b = Card("B");
+
+        var result = ModuleLoader.CollectCards([new FakeModule { CardList = [a, null!, b] }]);
+
+        Assert.Equal(new[] { a, b }, result.Cards);
     }
 }

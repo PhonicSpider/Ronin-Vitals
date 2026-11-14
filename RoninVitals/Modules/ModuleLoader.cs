@@ -86,7 +86,41 @@ public static class ModuleLoader
         return new ModuleLoadResult(kept, problems);
     }
 
-    private static ModuleLoadResult Empty() => new([], []);
+    /// <summary>
+    /// Gathers every module's cards in module order. A module whose cards cannot be read is skipped as a whole and
+    /// recorded as a problem; a missing card list counts as empty and a missing card entry is ignored.
+    /// </summary>
+    internal static (IReadOnlyList<ModuleCard> Cards, IReadOnlyList<string> Problems) CollectCards(IReadOnlyList<IFeatureModule> modules)
+    {
+        var cards = new List<ModuleCard>();
+        var problems = new List<string>();
+        foreach (var module in modules)
+        {
+            try
+            {
+                var moduleCards = new List<ModuleCard>();
+                var list = module.Cards;
+                if (list is not null)
+                {
+                    foreach (var card in list)
+                    {
+                        if (card is not null)
+                        {
+                            moduleCards.Add(card);
+                        }
+                    }
+                }
+                cards.AddRange(moduleCards);
+            }
+            catch (Exception)
+            {
+                problems.Add("An optional module's cards could not be read, so they were skipped.");
+            }
+        }
+        return (cards, problems);
+    }
+
+    private static ModuleLoadResult Empty()=> new([], []);
 
     private static void AddResolveFolder(string folder)
     {

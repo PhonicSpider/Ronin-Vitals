@@ -113,7 +113,13 @@ public partial class ShellViewModel : ObservableObject
         {
             Trace.TraceWarning(problem);
         }
-        return result.Modules.SelectMany(module => module.Cards).ToList();
+
+        var collected = ModuleLoader.CollectCards(result.Modules);
+        foreach (var problem in collected.Problems)
+        {
+            Trace.TraceWarning(problem);
+        }
+        return collected.Cards;
     }
 
     private async void OpenModuleCard(ModuleCard card)
