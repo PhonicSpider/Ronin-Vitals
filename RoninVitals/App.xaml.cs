@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Windows;
+using RoninVitals.Modules;
 using RoninVitals.Services;
 
 namespace RoninVitals;
@@ -20,6 +22,28 @@ public partial class App : Application
             return;
         }
 
+        ModuleHost.Load(AppContext.BaseDirectory);
+        MergeModuleResources();
+
         base.OnStartup(e);
+    }
+
+    /// <summary>Adds each module's styles and templates to the application. A bad dictionary is skipped, never fatal.</summary>
+    private void MergeModuleResources()
+    {
+        foreach (var module in ModuleHost.Discovered)
+        {
+            try
+            {
+                if (module.Resources is { } resources)
+                {
+                    Resources.MergedDictionaries.Add(resources);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"An optional module's resources could not be added, so they were skipped: {ex.Message}");
+            }
+        }
     }
 }
