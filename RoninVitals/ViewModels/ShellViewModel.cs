@@ -3,6 +3,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RoninVitals.Models;
+using RoninVitals.Modules;
 using RoninVitals.Services;
 
 namespace RoninVitals.ViewModels;
@@ -87,9 +88,20 @@ public partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task UndoEntry(ActionLogEntry entry) => await entry.UndoAsync();
 
-    private void NavigateHome() => CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
+    /// <summary>Asks the current screen whether the window may close.</summary>
+    public Task<bool> CanCloseAsync() => LeaveGuard.CanLeaveAsync(CurrentView);
 
-    private void NavigateToSection(SectionKey key) => CurrentView = new SymptomsViewModel(key, NavigateHome, ShowReport);
+    private async void NavigateHome()
+    {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
+        CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
+    }
+
+    private async void NavigateToSection(SectionKey key)
+    {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
+        CurrentView = new SymptomsViewModel(key, NavigateHome, ShowReport);
+    }
 
     private void ShowReport(ReportPreviewViewModel preview)
     {
@@ -99,6 +111,7 @@ public partial class ShellViewModel : ObservableObject
 
     private async void NavigateToDrivers()
     {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
         var driversViewModel = new DriversViewModel(NavigateHome);
         CurrentView = driversViewModel;
         await driversViewModel.StartScanAsync();
