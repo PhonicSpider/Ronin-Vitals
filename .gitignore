@@ -32,6 +32,9 @@ appsettings.*.local.json
 CHECKLIST.md
 Ronin_Vitals_Project_Brief.md
 
+# Local add-on folder with its own repository
+Ronin_Vitals.Pro/
+
 # OS junk
 Thumbs.db
 .DS_Store

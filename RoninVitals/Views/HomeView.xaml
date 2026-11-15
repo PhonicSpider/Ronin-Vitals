@@ -212,6 +212,40 @@
                 </StackPanel>
             </Grid>
         </Button>
+
+        <!-- Cards supplied by optional modules. Collapsed, and taking no space, when there are none. -->
+        <ItemsControl ItemsSource="{Binding ModuleCards}"
+                      Visibility="{Binding HasModuleCards, Converter={StaticResource BoolToVis}}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Style="{StaticResource SectionTile}" Margin="0,12,0,0" HorizontalContentAlignment="Stretch"
+                            Command="{Binding DataContext.OpenModuleCardCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource IconWrap}" Width="34" Height="34" Background="{StaticResource Vitals.BlueDim.Brush}" Margin="0,0,14,0">
+                                <Viewbox Width="17" Height="17">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="{Binding IconPathData}"
+                                              Stroke="{StaticResource Vitals.Blue.Brush}" StrokeThickness="1.8"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                    </Canvas>
+                                </Viewbox>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontFamily="{StaticResource Vitals.Font.Display}"
+                                           FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Vitals.Text.Brush}"/>
+                                <TextBlock Text="{Binding Subtitle}"
+                                           Style="{StaticResource Vitals.Text.Body}" FontSize="11.5" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
     </StackPanel>
     </ScrollViewer>
 </UserControl>

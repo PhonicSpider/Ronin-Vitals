@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
+using RoninVitals.Modules;
 using RoninVitals.ViewModels;
 
 namespace RoninVitals.Views;
@@ -12,6 +13,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new ShellViewModel();
+        _ = new CloseGuard(this, () => DataContext is ShellViewModel shell ? shell.CanCloseAsync() : Task.FromResult(true));
 
         var descriptor = DependencyPropertyDescriptor.FromProperty(ContentControl.ContentProperty, typeof(ContentControl));
         descriptor.AddValueChanged(ScreenHost, (_, _) => AnimateScreenTransition());

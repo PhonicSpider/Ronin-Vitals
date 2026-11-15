@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RoninVitals.Models;
+using RoninVitals.Modules;
 using RoninVitals.Services;
 
 namespace RoninVitals.ViewModels;
@@ -13,8 +15,9 @@ public partial class ShellViewModel : ObservableObject
     private readonly DispatcherTimer _uptimeTimer;
     private readonly List<VitalMetricViewModel> _allVitals;
     private readonly SystemMetricsService _metrics = new();
+    private readonly IReadOnlyList<ModuleCard> _moduleCards;
 
-    public ShellViewModel()
+    public ShellViewModel(IReadOnlyList<IFeatureModule>? discovered = null)
     {
         // Stays collapsed until the first fix is applied, then stays visible for the rest of
         // the session (even past the undo window) so the user can always review what changed.
@@ -56,7 +59,8 @@ public partial class ShellViewModel : ObservableObject
         _uptimeTimer.Tick += (_, _) => UptimeText = _metrics.SampleUptimeText();
         _uptimeTimer.Start();
 
-        CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
+        _moduleCards = InitializeModules(discovered ?? ModuleHost.Discovered);
+        CurrentView = CreateHome();
     }
 
     /// <summary>Network/CPU/RAM, plus the single drive inline when there's only one.</summary>
@@ -87,9 +91,55 @@ public partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task UndoEntry(ActionLogEntry entry) => await entry.UndoAsync();
 
-    private void NavigateHome() => CurrentView = new HomeViewModel(NavigateToSection, NavigateToDrivers);
+    /// <summary>Asks the current screen whether the window may close.</summary>
+    public Task<bool> CanCloseAsync() => LeaveGuard.CanLeaveAsync(CurrentView);
 
-    private void NavigateToSection(SectionKey key) => CurrentView = new SymptomsViewModel(key, NavigateHome, ShowReport);
+    private async void NavigateHome()
+    {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
+        CurrentView = CreateHome();
+    }
+
+    private HomeViewModel CreateHome() => new(NavigateToSection, NavigateToDrivers, _moduleCards, OpenModuleCard);
+
+    /// <summary>Initializes the discovered modules and gathers their cards in module order. Modules that fail are skipped.</summary>
+    private IReadOnlyList<ModuleCard> InitializeModules(IReadOnlyList<IFeatureModule> discovered)
+    {
+        if (discovered.Count == 0) return [];
+
+        var context = new ModuleContext { NavigateHome = NavigateHome };
+        var result = ModuleLoader.Initialize(discovered, context);
+        foreach (var problem in result.Problems)
+        {
+            Trace.TraceWarning(problem);
+        }
+
+        var collected = ModuleLoader.CollectCards(result.Modules);
+        foreach (var problem in collected.Problems)
+        {
+            Trace.TraceWarning(problem);
+        }
+        return collected.Cards;
+    }
+
+    private async void OpenModuleCard(ModuleCard card)
+    {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
+
+        var screen = card.TryCreateScreen();
+        if (screen is null)
+        {
+            Trace.TraceWarning($"The screen for the card \"{card.Title}\" could not be opened, so the current screen was kept.");
+            return;
+        }
+        CurrentView = screen;
+    }
+
+    private async void NavigateToSection(SectionKey key)
+    {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
+        CurrentView = new SymptomsViewModel(key, NavigateHome, ShowReport);
+    }
 
     private void ShowReport(ReportPreviewViewModel preview)
     {
@@ -99,6 +149,7 @@ public partial class ShellViewModel : ObservableObject
 
     private async void NavigateToDrivers()
     {
+        if (!await LeaveGuard.CanLeaveAsync(CurrentView)) return;
         var driversViewModel = new DriversViewModel(NavigateHome);
         CurrentView = driversViewModel;
         await driversViewModel.StartScanAsync();
